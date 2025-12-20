@@ -152,8 +152,9 @@ st.markdown("""
         color: white !important;
         border: none !important;
         border-radius: 2px !important;
-        padding: 0.5rem 2rem !important;
+        padding: 0.6rem 2rem !important;
         font-weight: 500 !important;
+        font-size: 1.05rem !important;
         transition: all 0.2s ease !important;
     }
     
@@ -418,7 +419,7 @@ elif status == "READY_TO_ENTER":
     
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
-        if st.button("بدء استخدام المكتبة", use_container_width=True, type="primary"):
+        if st.button("📚 بدء استخدام المكتبة", use_container_width=True, type="primary"):
             state.locked = True
             state.current_user_token = st.session_state.user_token
             state.last_activity = time.time()
@@ -608,7 +609,6 @@ if st.session_state.search_results:
             <div class="book-main-title">{item['file_name']}</div>
             <div class="book-metadata">
                 <span>📁 الحجم: {item['size'] / (1024*1024):.2f} ميجابايت</span>
-                <span>📅 التاريخ: {item['date'].strftime('%Y-%m-%d')}</span>
             </div>
             <div class="book-description">{caption_text}</div>
         </div>
