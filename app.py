@@ -7,10 +7,10 @@ import os
 st.set_page_config(page_title="TeleBooks - تحميل الكتب", page_icon="📚")
 
 # الحصول على بيانات API من secrets
-api_id = st.secrets["api_id"]
+api_id = int(st.secrets["api_id"])
 api_hash = st.secrets["api_hash"]
 bot_token = st.secrets["bot_token"]
-channel_id = st.secrets["channel_id"]
+channel_id = int(st.secrets["channel_id"])
 
 # دالة للبحث عن الكتب
 def search_books(query):
@@ -23,22 +23,21 @@ def search_books(query):
         client = TelegramClient("bot_session", api_id, api_hash)
         
         async def do_search():
-            # استخدام bot_token للدخول
-            await client.start(bot_token=bot_token)
-            results = []
-            
+            # استخدام حساب المستخدم للدخول
             try:
+                await client.connect()
+                
+                # التحقق من تسجيل الدخول
+                if not await client.is_user_authorized():
+                    st.error("⚠️ يجب تسجيل الدخول أولاً!")
+                    st.info("قم بتشغيل الكود محلياً مرة واحدة لتسجيل الدخول")
+                    await client.disconnect()
+                    return []
+                
                 st.info(f"🔍 جاري الاتصال بالقناة...")
                 
-                # محاولة الحصول على القناة
-                # إذا كان channel_id رقم، استخدمه مباشرة
-                # إذا كان رابط دعوة، استخدم hash الدعوة
-                try:
-                    # محاولة استخدامه كرقم أولاً
-                    entity = await client.get_entity(int(channel_id))
-                except ValueError:
-                    # إذا لم ينجح، جرب استخدامه كما هو (قد يكون username أو link)
-                    entity = await client.get_entity(channel_id)
+                # استخدام channel_id كرقم مباشرة
+                entity = await client.get_entity(channel_id)
                 
                 st.info(f"✅ تم الاتصال! جاري البحث...")
                 
@@ -47,6 +46,7 @@ def search_books(query):
                 
                 st.info(f"📝 تم فحص {len(messages)} رسالة...")
                 
+                results = []
                 for message in messages:
                     # التحقق من وجود ملف
                     if message.file:
@@ -70,7 +70,7 @@ def search_books(query):
                     
             except Exception as e:
                 st.error(f"❌ خطأ: {str(e)}")
-                st.info("💡 تأكد من: 1) البوت مضاف للقناة كـ Admin  2) channel_id صحيح")
+                st.info("💡 تأكد من: 1) أنك مشترك في القناة  2) channel_id صحيح")
             
             await client.disconnect()
             return results
@@ -90,6 +90,60 @@ def search_books(query):
 # واجهة المستخدم
 st.title("📚 TeleBooks - محرك البحث عن الكتب")
 st.markdown("ابحث عن الكتب في قناة تيليجرام")
+
+# زر اختبار الاتصال
+if st.button("🔧 اختبار اتصال البوت بالقناة"):
+    with st.spinner("جاري الاختبار..."):
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            client = TelegramClient("bot_session", api_id, api_hash)
+            
+            async def test_connection():
+                await client.start(bot_token=bot_token)
+                try:
+                    # محاولة الوصول للقناة
+                    entity = await client.get_entity(channel_id)
+                    st.success(f"✅ تم الاتصال بالقناة: **{entity.title}**")
+                    
+                    # محاولة قراءة آخر رسالة
+                    messages = await client.get_messages(entity, limit=1)
+                    if messages:
+                        st.info(f"✅ يمكن قراءة الرسائل - آخر رسالة: {messages[0].date}")
+                    
+                    # محاولة إرسال رسالة تجريبية
+                    try:
+                        test_msg = await client.send_message(entity, "🔧 اختبار البوت - سيتم الحذف")
+                        st.success("✅ يمكن إرسال رسائل")
+                        
+                        # حذف الرسالة
+                        await client.delete_messages(entity, test_msg.id)
+                        st.success("✅ يمكن حذف الرسائل")
+                        
+                        st.success("🎉 البوت يعمل بشكل كامل!")
+                        
+                    except Exception as e:
+                        st.warning(f"⚠️ لا يمكن إرسال/حذف رسائل: {str(e)}")
+                        st.info("💡 البوت يحتاج صلاحيات 'Post Messages' و 'Delete Messages'")
+                    
+                except Exception as e:
+                    st.error(f"❌ فشل الاختبار: {str(e)}")
+                    st.warning("""
+                    📌 تأكد من:
+                    1. البوت مضاف كمشرف في القناة
+                    2. channel_id صحيح (يبدأ بـ -100)
+                    3. البوت لديه صلاحيات كافية
+                    """)
+                
+                await client.disconnect()
+            
+            loop.run_until_complete(test_connection())
+            loop.close()
+            
+        except Exception as e:
+            st.error(f"❌ خطأ في الاختبار: {str(e)}")
+
+st.markdown("---")
 
 # مربع البحث
 query = st.text_input("🔍 ابحث عن كتاب:", placeholder="أدخل اسم الكتاب أو المؤلف")
