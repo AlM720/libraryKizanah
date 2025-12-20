@@ -496,7 +496,7 @@ def search_books_async(query):
         client = await get_client()
         try:
             entity = await client.get_entity(channel_id)
-            async for message in client.iter_messages(entity, search=query, limit=30):
+            async for message in client.iter_messages(entity, search=query):
                 if message.file:
                     file_name = message.file.name or message.text[:20] or 'كتاب'
                     if not file_name.endswith(('.pdf', '.epub', '.rar', '.zip')):
