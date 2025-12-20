@@ -12,152 +12,280 @@ nest_asyncio.apply()
 
 # إعداد الصفحة
 st.set_page_config(
-    page_title="باحث الكتب",
-    page_icon="📖",
+    page_title="باحث الكتب - المكتبة الرقمية",
+    page_icon="📚",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- تصميم CSS مخصص ---
+# --- تصميم CSS احترافي يشبه المكتبات الأكاديمية ---
 st.markdown("""
 <style>
-    /* الخط العربي */
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@300;400;500;700&display=swap');
     
     * {
-        font-family: 'Cairo', sans-serif;
+        font-family: 'Tajawal', sans-serif;
     }
     
-    /* إخفاء عناصر streamlit الافتراضية */
+    h1, h2, h3 {
+        font-family: 'Amiri', serif;
+    }
+    
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
-    /* الخلفية الرئيسية */
     .stApp {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background-color: #f8f9fa;
     }
     
-    /* البطاقات */
-    .main-card {
-        background: white;
-        border-radius: 20px;
-        padding: 2rem;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
-        margin: 1rem 0;
-    }
-    
-    /* عنوان التطبيق */
-    .app-title {
-        text-align: center;
-        color: white;
-        font-size: 3rem;
-        font-weight: 700;
-        margin: 2rem 0 1rem 0;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-    }
-    
-    .app-subtitle {
-        text-align: center;
-        color: rgba(255,255,255,0.9);
-        font-size: 1.2rem;
+    /* الهيدر الأكاديمي */
+    .library-header {
+        background: linear-gradient(to bottom, #2c3e50 0%, #34495e 100%);
+        padding: 1.5rem 0;
         margin-bottom: 2rem;
+        border-bottom: 3px solid #95a5a6;
     }
     
-    /* بطاقة الكتاب */
-    .book-card {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        border-radius: 15px;
+    .library-title {
+        color: #ecf0f1;
+        font-size: 2.5rem;
+        font-weight: 700;
+        text-align: center;
+        margin: 0;
+        letter-spacing: 1px;
+    }
+    
+    .library-subtitle {
+        color: #bdc3c7;
+        text-align: center;
+        font-size: 1rem;
+        margin-top: 0.5rem;
+        font-weight: 300;
+    }
+    
+    /* شريط المعلومات */
+    .info-bar {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+        padding: 0.8rem 1.5rem;
+        margin-bottom: 1.5rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    
+    /* صندوق البحث الأكاديمي */
+    .search-container {
+        background: white;
+        border: 2px solid #dee2e6;
+        border-radius: 2px;
+        padding: 2rem;
+        margin-bottom: 2rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+    }
+    
+    .search-label {
+        color: #2c3e50;
+        font-size: 1.1rem;
+        font-weight: 500;
+        margin-bottom: 1rem;
+        display: block;
+    }
+    
+    /* بطاقة الكتاب - تصميم أرشيفي */
+    .book-item {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-right: 4px solid #7f8c8d;
         padding: 1.5rem;
-        margin: 1rem 0;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        border-left: 5px solid #667eea;
+        margin-bottom: 1rem;
+        transition: all 0.2s ease;
     }
     
-    .book-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+    .book-item:hover {
+        border-right-color: #34495e;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     }
     
-    .book-title {
-        font-size: 1.3rem;
-        font-weight: 600;
-        color: #2d3748;
+    .book-number {
+        color: #95a5a6;
+        font-size: 0.85rem;
+        font-weight: 500;
         margin-bottom: 0.5rem;
     }
     
-    .book-info {
-        color: #718096;
-        font-size: 0.9rem;
+    .book-main-title {
+        color: #2c3e50;
+        font-size: 1.4rem;
+        font-weight: 700;
+        margin-bottom: 0.8rem;
+        line-height: 1.4;
     }
     
-    /* الأزرار */
+    .book-metadata {
+        color: #7f8c8d;
+        font-size: 0.9rem;
+        margin-bottom: 1rem;
+        padding: 0.5rem 0;
+        border-top: 1px solid #ecf0f1;
+        border-bottom: 1px solid #ecf0f1;
+    }
+    
+    .book-metadata span {
+        margin-left: 1.5rem;
+    }
+    
+    .book-description {
+        color: #5a6c7d;
+        font-size: 0.95rem;
+        line-height: 1.7;
+        margin-bottom: 1rem;
+        text-align: justify;
+    }
+    
+    /* الأزرار الكلاسيكية */
     .stButton>button {
-        border-radius: 10px;
-        font-weight: 600;
-        border: none;
-        transition: all 0.3s ease;
+        background: #34495e !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 2px !important;
+        padding: 0.5rem 2rem !important;
+        font-weight: 500 !important;
+        transition: all 0.2s ease !important;
     }
     
     .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        background: #2c3e50 !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
     }
     
-    /* شريط البحث */
+    /* مدخلات النصوص */
     .stTextInput>div>div>input {
-        border-radius: 15px;
-        border: 2px solid #e2e8f0;
-        padding: 0.75rem 1rem;
-        font-size: 1.1rem;
+        border: 1px solid #ced4da !important;
+        border-radius: 2px !important;
+        padding: 0.7rem 1rem !important;
+        font-size: 1rem !important;
+        background: #fafafa !important;
     }
     
-    /* حالة الانتظار */
-    .waiting-box {
-        background: linear-gradient(135deg, #ffeaa7 0%, #fdcb6e 100%);
-        border-radius: 15px;
-        padding: 2rem;
+    .stTextInput>div>div>input:focus {
+        border-color: #7f8c8d !important;
+        background: white !important;
+    }
+    
+    /* صندوق النتائج */
+    .results-header {
+        background: #ecf0f1;
+        border-left: 4px solid #34495e;
+        padding: 1rem 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .results-title {
+        color: #2c3e50;
+        font-size: 1.3rem;
+        font-weight: 600;
+        margin: 0;
+    }
+    
+    .results-stats {
+        color: #7f8c8d;
+        font-size: 0.9rem;
+        margin-top: 0.3rem;
+    }
+    
+    /* شاشة الانتظار */
+    .waiting-container {
+        background: white;
+        border: 2px solid #e74c3c;
+        padding: 3rem;
         text-align: center;
-        color: #2d3748;
+        margin: 3rem auto;
+        max-width: 600px;
     }
     
-    .waiting-icon {
-        font-size: 4rem;
+    .waiting-title {
+        color: #c0392b;
+        font-size: 1.8rem;
+        font-weight: 600;
         margin-bottom: 1rem;
     }
     
-    /* شارة الحالة */
-    .status-badge {
-        display: inline-block;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9rem;
+    .waiting-text {
+        color: #7f8c8d;
+        font-size: 1.1rem;
+        line-height: 1.6;
     }
     
-    .status-online {
-        background: #48bb78;
-        color: white;
-    }
-    
-    .status-busy {
-        background: #f56565;
-        color: white;
-    }
-    
-    /* عداد الوقت */
-    .timer-box {
-        background: rgba(255,255,255,0.2);
-        border-radius: 10px;
-        padding: 1rem;
-        margin: 1rem 0;
-        color: white;
-        text-align: center;
-    }
-    
-    .timer-number {
-        font-size: 2rem;
+    .timer-display {
+        background: #ecf0f1;
+        border: 1px solid #bdc3c7;
+        border-radius: 2px;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+        font-size: 2.5rem;
         font-weight: 700;
+        color: #34495e;
+    }
+    
+    /* شاشة الترحيب */
+    .welcome-box {
+        background: white;
+        border: 1px solid #dee2e6;
+        padding: 3rem;
+        text-align: center;
+        margin: 2rem auto;
+        max-width: 700px;
+    }
+    
+    .welcome-title {
+        color: #2c3e50;
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+    }
+    
+    .welcome-description {
+        color: #7f8c8d;
+        font-size: 1.1rem;
+        line-height: 1.8;
+        margin-bottom: 2rem;
+    }
+    
+    .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: #27ae60;
+        margin-left: 0.5rem;
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+    
+    /* شارة الحالة */
+    .badge {
+        display: inline-block;
+        padding: 0.4rem 1rem;
+        background: #ecf0f1;
+        color: #2c3e50;
+        border-radius: 2px;
+        font-size: 0.85rem;
+        font-weight: 500;
+        border: 1px solid #bdc3c7;
+    }
+    
+    .badge-admin {
+        background: #34495e;
+        color: white;
+        border-color: #2c3e50;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -165,7 +293,6 @@ st.markdown("""
 # --- ⚙️ إعدادات النظام ---
 TIMEOUT_SECONDS = 180
 
-# التأكد من وجود البيانات
 required_secrets = ["api_id", "api_hash", "session_string", "channel_id", "admin_password"]
 if not all(key in st.secrets for key in required_secrets):
     st.error("⚠️ خطأ: تأكد من إعداد ملف secrets.toml بكامل البيانات.")
@@ -214,47 +341,50 @@ status = check_access()
 # 🛑 شاشة الانتظار
 # ==========================================
 if status == False:
-    st.markdown('<div class="app-title">📖 باحث الكتب</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="library-header">
+        <div class="library-title">المكتبة الرقمية</div>
+        <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
+    </div>
+    """, unsafe_allow_html=True)
     
     time_passed = int(time.time() - state.last_activity)
     time_left = TIMEOUT_SECONDS - time_passed
     if time_left < 0: time_left = 0
     
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col2:
-        st.markdown(f"""
-        <div class="waiting-box">
-            <div class="waiting-icon">⏳</div>
-            <h2>المكتبة مشغولة حالياً</h2>
-            <p style="font-size: 1.1rem; margin: 1rem 0;">
-                يوجد مستخدم آخر يستخدم النظام الآن
-            </p>
-            <div class="timer-box">
-                <div>الوقت المتبقي للإتاحة التلقائية</div>
-                <div class="timer-number">{time_left}</div>
-                <div>ثانية</div>
-            </div>
+    st.markdown("""
+    <div class="waiting-container">
+        <div class="waiting-title">⏸️ النظام مشغول حالياً</div>
+        <div class="waiting-text">
+            يستخدم أحد الباحثين النظام في الوقت الحالي.<br>
+            للحفاظ على استقرار الخدمة، يُسمح بدخول مستخدم واحد فقط في كل مرة.
         </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        if st.button("🔄 تحديث الحالة", use_container_width=True, type="primary"):
+        <div class="timer-display">
+            {} ثانية
+        </div>
+        <div class="waiting-text" style="font-size: 0.95rem;">
+            سيتم إتاحة النظام تلقائياً عند انتهاء المدة المحددة
+        </div>
+    </div>
+    """.format(time_left), unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("تحديث الحالة", use_container_width=True):
             st.rerun()
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        with st.expander("🔐 دخول المدير"):
-            password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_locked")
-            if st.button("دخول", use_container_width=True):
-                if password_attempt == st.secrets["admin_password"]:
-                    st.session_state.is_admin = True
-                    st.success("✅ تم التحقق بنجاح")
-                    time.sleep(0.5)
-                    st.rerun()
-                else:
-                    st.error("❌ كلمة المرور خاطئة")
+    
+    st.markdown("---")
+    
+    with st.expander("دخول المسؤول"):
+        password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_locked")
+        if st.button("دخول"):
+            if password_attempt == st.secrets["admin_password"]:
+                st.session_state.is_admin = True
+                st.success("✓ تم التحقق من الهوية")
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.error("كلمة المرور غير صحيحة")
     
     st.stop()
 
@@ -262,38 +392,46 @@ if status == False:
 # 👋 شاشة الترحيب
 # ==========================================
 elif status == "READY_TO_ENTER":
-    st.markdown('<div class="app-title">📖 باحث الكتب</div>', unsafe_allow_html=True)
-    st.markdown('<div class="app-subtitle">اكتشف عالم الكتب والمعرفة</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div class="library-header">
+        <div class="library-title">المكتبة الرقمية</div>
+        <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
+    </div>
+    """, unsafe_allow_html=True)
     
-    col1, col2, col3 = st.columns([1, 2, 1])
-    
-    with col2:
-        st.markdown("""
-        <div class="main-card" style="text-align: center;">
-            <h2 style="color: #667eea; margin-bottom: 1rem;">مرحباً بك في المكتبة الرقمية</h2>
-            <p style="font-size: 1.1rem; color: #718096; margin-bottom: 2rem;">
-                ابحث عن آلاف الكتب في جميع المجالات
-            </p>
-            <span class="status-badge status-online">⚡ النظام متاح الآن</span>
+    st.markdown("""
+    <div class="welcome-box">
+        <div class="welcome-title">مرحباً بك في المكتبة</div>
+        <div class="welcome-description">
+            يوفر لك هذا النظام إمكانية البحث في آلاف الكتب والمراجع العلمية والأدبية
+            من مختلف المجالات المعرفية. استخدم محرك البحث للعثور على الكتاب المطلوب
+            وتحميله مباشرة إلى جهازك.
         </div>
-        """, unsafe_allow_html=True)
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        if st.button("🚀 ابدأ البحث الآن", use_container_width=True, type="primary"):
+        <div style="margin-bottom: 2rem;">
+            <span class="badge" style="background: #27ae60; color: white; border-color: #229954;">
+                <span class="status-indicator" style="width: 8px; height: 8px; margin-left: 0.3rem;"></span>
+                النظام متاح الآن
+            </span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("بدء استخدام المكتبة", use_container_width=True, type="primary"):
             state.locked = True
             state.current_user_token = st.session_state.user_token
             state.last_activity = time.time()
             st.rerun()
-        
-        st.markdown("<br>", unsafe_allow_html=True)
-        
-        with st.expander("🔐 تسجيل دخول المدير"):
-            password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_open")
-            if st.button("دخول", use_container_width=True):
-                if password_attempt == st.secrets["admin_password"]:
-                    st.session_state.is_admin = True
-                    st.rerun()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    with st.expander("دخول المسؤول"):
+        password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_open")
+        if st.button("دخول"):
+            if password_attempt == st.secrets["admin_password"]:
+                st.session_state.is_admin = True
+                st.rerun()
     
     st.stop()
 
@@ -301,20 +439,28 @@ elif status == "READY_TO_ENTER":
 # ✅ التطبيق الرئيسي
 # ==========================================
 
-# الشريط العلوي
-col_header1, col_header2, col_header3 = st.columns([2, 6, 2])
+# الهيدر الرئيسي
+st.markdown("""
+<div class="library-header">
+    <div class="library-title">المكتبة الرقمية</div>
+    <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
+</div>
+""", unsafe_allow_html=True)
 
-with col_header1:
-    st.markdown('<div class="app-title" style="font-size: 2rem; margin: 0;">📖 باحث الكتب</div>', unsafe_allow_html=True)
+# شريط المعلومات العلوي
+if st.session_state.is_admin:
+    status_badge = '<span class="badge badge-admin">مسؤول النظام</span>'
+else:
+    time_left_session = TIMEOUT_SECONDS - int(time.time() - state.last_activity)
+    status_badge = f'<span class="badge">الوقت المتبقي: {time_left_session} ثانية</span>'
 
-with col_header3:
-    if st.session_state.is_admin:
-        st.markdown('<span class="status-badge" style="background: #9f7aea; color: white;">👑 مدير</span>', unsafe_allow_html=True)
-    else:
-        time_left_session = TIMEOUT_SECONDS - int(time.time() - state.last_activity)
-        st.markdown(f'<span class="status-badge status-online">⏱️ {time_left_session}ث</span>', unsafe_allow_html=True)
-    
-    if st.button("🚪 خروج", use_container_width=True):
+col_info1, col_info2, col_info3 = st.columns([2, 6, 2])
+
+with col_info1:
+    st.markdown(f'<div style="padding: 0.5rem;">{status_badge}</div>', unsafe_allow_html=True)
+
+with col_info3:
+    if st.button("إنهاء الجلسة", use_container_width=True):
         if st.session_state.is_admin:
             st.session_state.is_admin = False
         else:
@@ -326,7 +472,8 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 # تحذير للمدير
 if status == "ADMIN_ACCESS" and state.locked and state.current_user_token != st.session_state.user_token:
-    st.warning("⚠️ تنبيه: يوجد مستخدم آخر نشط حالياً. استخدامكما المتزامن قد يسبب مشاكل.")
+    st.warning("⚠️ تنبيه: يوجد مستخدم نشط آخر. الاستخدام المتزامن قد يسبب مشاكل في النظام.")
+    st.markdown("<br>", unsafe_allow_html=True)
 
 # --- دوال الاتصال ---
 api_id = int(st.secrets["api_id"])
@@ -361,7 +508,7 @@ def search_books_async(query):
                         'caption': message.text or ""
                     })
         except Exception as e:
-            st.error(f"❌ خطأ في الاتصال: {e}")
+            st.error(f"خطأ في الاتصال بقاعدة البيانات: {e}")
         finally:
             await client.disconnect()
 
@@ -386,7 +533,7 @@ def download_book_to_memory(message_id):
             message = await client.get_messages(entity, ids=message_id)
             if message and message.file:
                 file_name = message.file.name or "book.pdf"
-                col_prog.text(f"📥 جاري التحميل: {file_name}")
+                col_prog.text(f"جاري تحضير الملف: {file_name}")
                 
                 def callback(current, total):
                     progress_bar.progress(current / total)
@@ -394,9 +541,9 @@ def download_book_to_memory(message_id):
                 await client.download_media(message, buffer, progress_callback=callback)
                 buffer.seek(0)
             else:
-                st.error("❌ الملف غير موجود")
+                st.error("الملف المطلوب غير متوفر")
         except Exception as e:
-            st.error(f"❌ فشل التحميل: {e}")
+            st.error(f"فشل في تحميل الملف: {e}")
             return None
         finally:
             await client.disconnect()
@@ -413,81 +560,78 @@ if 'search_results' not in st.session_state:
 if 'search_time' not in st.session_state:
     st.session_state.search_time = None
 
-# بطاقة البحث
-col1, col2, col3 = st.columns([1, 6, 1])
+# صندوق البحث
+st.markdown('<div class="search-container">', unsafe_allow_html=True)
+st.markdown('<span class="search-label">البحث في فهرس المكتبة</span>', unsafe_allow_html=True)
 
-with col2:
-    st.markdown('<div class="main-card">', unsafe_allow_html=True)
+col_search, col_btn = st.columns([6, 1])
+
+with col_search:
+    query = st.text_input(
+        "بحث",
+        placeholder="أدخل عنوان الكتاب، اسم المؤلف، أو الموضوع...",
+        label_visibility="collapsed"
+    )
+
+with col_btn:
+    search_button = st.button("بحث", use_container_width=True, type="primary")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+if search_button and query:
+    state.last_activity = time.time()
+    start_time = time.time()
     
-    col_search, col_btn = st.columns([5, 1])
-    
-    with col_search:
-        query = st.text_input(
-            "بحث",
-            placeholder="ابحث عن كتاب، مؤلف، أو موضوع...",
-            label_visibility="collapsed"
-        )
-    
-    with col_btn:
-        search_button = st.button("🔍", use_container_width=True, type="primary")
-    
-    if search_button and query:
-        state.last_activity = time.time()
-        start_time = time.time()
-        
-        with st.spinner("🔍 جاري البحث في المكتبة..."):
-            st.session_state.search_results = search_books_async(query)
-            st.session_state.search_time = round(time.time() - start_time, 2)
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+    with st.spinner("جاري البحث في قاعدة البيانات..."):
+        st.session_state.search_results = search_books_async(query)
+        st.session_state.search_time = round(time.time() - start_time, 2)
 
 # عرض النتائج
 if st.session_state.search_results:
-    col1, col2, col3 = st.columns([1, 6, 1])
+    st.markdown(f"""
+    <div class="results-header">
+        <div class="results-title">نتائج البحث</div>
+        <div class="results-stats">
+            عدد النتائج: {len(st.session_state.search_results)} • 
+            وقت البحث: {st.session_state.search_time} ثانية
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
-    with col2:
+    for index, item in enumerate(st.session_state.search_results, 1):
+        # تجهيز الوصف
+        caption_text = item['caption'].strip() if item['caption'] else "لا يوجد وصف متاح لهذا الكتاب."
+        
         st.markdown(f"""
-        <div class="main-card">
-            <h3 style="color: #667eea;">📚 نتائج البحث</h3>
-            <p style="color: #718096;">
-                تم العثور على <strong>{len(st.session_state.search_results)}</strong> نتيجة
-                في <strong>{st.session_state.search_time}</strong> ثانية
-            </p>
+        <div class="book-item">
+            <div class="book-number">النتيجة #{index}</div>
+            <div class="book-main-title">{item['file_name']}</div>
+            <div class="book-metadata">
+                <span>📁 الحجم: {item['size'] / (1024*1024):.2f} ميجابايت</span>
+                <span>📅 التاريخ: {item['date'].strftime('%Y-%m-%d')}</span>
+            </div>
+            <div class="book-description">{caption_text}</div>
         </div>
         """, unsafe_allow_html=True)
         
-        for item in st.session_state.search_results:
-            st.markdown(f"""
-            <div class="book-card">
-                <div class="book-title">📖 {item['file_name']}</div>
-                <div class="book-info">📦 الحجم: {item['size'] / (1024*1024):.1f} ميجابايت</div>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            col_desc, col_down = st.columns([3, 1])
-            
-            with col_desc:
-                if item['caption']:
-                    with st.expander("📄 الوصف"):
-                        st.text(item['caption'])
-            
-            with col_down:
-                btn_key = f"btn_{item['id']}"
-                if st.button("⬇️ تحميل", key=btn_key, use_container_width=True):
-                    state.last_activity = time.time()
-                    
-                    buff, fname = download_book_to_memory(item['id'])
-                    if buff:
-                        st.download_button(
-                            label="💾 حفظ الملف",
-                            data=buff,
-                            file_name=fname,
-                            mime="application/octet-stream",
-                            key=f"save_{item['id']}",
-                            use_container_width=True
-                        )
+        col1, col2, col3 = st.columns([3, 2, 3])
+        with col2:
+            btn_key = f"btn_{item['id']}"
+            if st.button("تحميل الكتاب", key=btn_key, use_container_width=True):
+                state.last_activity = time.time()
+                
+                buff, fname = download_book_to_memory(item['id'])
+                if buff:
+                    st.download_button(
+                        label="حفظ الملف",
+                        data=buff,
+                        file_name=fname,
+                        mime="application/octet-stream",
+                        key=f"save_{item['id']}",
+                        use_container_width=True
+                    )
+        
+        st.markdown("<br>", unsafe_allow_html=True)
 
 elif query and search_button:
-    col1, col2, col3 = st.columns([1, 6, 1])
-    with col2:
-        st.info("🔍 لم يتم العثور على نتائج. جرب كلمات بحث أخرى.")
+    st.info("لم يتم العثور على نتائج مطابقة. حاول استخدام كلمات بحث مختلفة.")
