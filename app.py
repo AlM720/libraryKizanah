@@ -419,7 +419,7 @@ elif status == "READY_TO_ENTER":
     
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
-        if st.button("📚 بدء استخدام المكتبة", use_container_width=True, type="primary"):
+        if st.button("بدء استخدام المكتبة", use_container_width=True, type="primary"):
             state.locked = True
             state.current_user_token = st.session_state.user_token
             state.last_activity = time.time()
