@@ -7,7 +7,7 @@ import unicodedata
 
 # ---------- الأسرار (من إعدادات Streamlit) ----------
 api_id   = int(st.secrets["api_id"])
-api_hash = st.secrets["api_hash"])
+api_hash = st.secrets["api_hash"]
 bot_token = st.secrets["bot_token"]
 channel_id = int(st.secrets["channel_id"])
 
