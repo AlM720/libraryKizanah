@@ -9,6 +9,8 @@ st.set_page_config(page_title="TeleBooks - تحميل الكتب", page_icon="�
 # الحصول على بيانات API من secrets
 api_id = st.secrets["api_id"]
 api_hash = st.secrets["api_hash"]
+bot_token = st.secrets["bot_token"]
+channel_id = st.secrets["channel_id"]
 
 # دالة للبحث عن الكتب
 def search_books(query):
@@ -21,26 +23,54 @@ def search_books(query):
         client = TelegramClient("bot_session", api_id, api_hash)
         
         async def do_search():
-            await client.start()
-            channels = ['@BooksThief', '@librebook', '@pdfdrive']
+            # استخدام bot_token للدخول
+            await client.start(bot_token=bot_token)
             results = []
             
-            for channel in channels:
+            try:
+                st.info(f"🔍 جاري الاتصال بالقناة...")
+                
+                # محاولة الحصول على القناة
+                # إذا كان channel_id رقم، استخدمه مباشرة
+                # إذا كان رابط دعوة، استخدم hash الدعوة
                 try:
-                    st.info(f"البحث في {channel}...")
-                    messages = await client.get_messages(channel, limit=30, search=query)
+                    # محاولة استخدامه كرقم أولاً
+                    entity = await client.get_entity(int(channel_id))
+                except ValueError:
+                    # إذا لم ينجح، جرب استخدامه كما هو (قد يكون username أو link)
+                    entity = await client.get_entity(channel_id)
+                
+                st.info(f"✅ تم الاتصال! جاري البحث...")
+                
+                # البحث في رسائل القناة
+                messages = await client.get_messages(entity, limit=100, search=query)
+                
+                st.info(f"📝 تم فحص {len(messages)} رسالة...")
+                
+                for message in messages:
+                    # التحقق من وجود ملف
+                    if message.file:
+                        file_name = message.file.name or message.text or 'ملف'
+                        
+                        # قبول جميع أنواع الملفات
+                        results.append({
+                            'channel': f"القناة المحددة",
+                            'message_id': message.id,
+                            'text': message.text or 'بدون وصف',
+                            'file_name': file_name,
+                            'size': message.file.size or 0,
+                            'date': message.date,
+                            'channel_id': entity.id
+                        })
+                
+                if results:
+                    st.success(f"✅ وجدت {len(results)} نتيجة!")
+                else:
+                    st.warning("⚠️ لم يتم العثور على ملفات بهذا الاسم")
                     
-                    for message in messages:
-                        if message.file and message.file.name:
-                            results.append({
-                                'channel': channel,
-                                'message_id': message.id,
-                                'text': message.text or 'بدون وصف',
-                                'file_name': message.file.name,
-                                'size': message.file.size
-                            })
-                except Exception as e:
-                    st.warning(f"خطأ في {channel}: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ خطأ: {str(e)}")
+                st.info("💡 تأكد من: 1) البوت مضاف للقناة كـ Admin  2) channel_id صحيح")
             
             await client.disconnect()
             return results
@@ -59,7 +89,7 @@ def search_books(query):
 
 # واجهة المستخدم
 st.title("📚 TeleBooks - محرك البحث عن الكتب")
-st.markdown("ابحث عن الكتب في قنوات تيليجرام")
+st.markdown("ابحث عن الكتب في قناة تيليجرام")
 
 # مربع البحث
 query = st.text_input("🔍 ابحث عن كتاب:", placeholder="أدخل اسم الكتاب أو المؤلف")
@@ -72,7 +102,7 @@ if 'current_index' not in st.session_state:
 
 if st.button("بحث"):
     if query:
-        with st.spinner("جاري البحث في القنوات..."):
+        with st.spinner("جاري البحث في القناة..."):
             results = search_books(query)
             
             if results:
@@ -91,10 +121,13 @@ if st.session_state.results:
     
     st.markdown("---")
     st.subheader(f"📖 {result['file_name']}")
-    st.write(f"**القناة:** {result['channel']}")
     st.write(f"**الوصف:** {result['text'][:300]}...")
     st.write(f"**الحجم:** {result['size'] / (1024*1024):.2f} MB")
-    st.markdown(f"### [📥 فتح في تيليجرام](https://t.me/{result['channel'][1:]}/{result['message_id']})")
+    st.write(f"**التاريخ:** {result['date'].strftime('%Y-%m-%d %H:%M')}")
+    
+    # رابط مباشر للرسالة (يعمل مع القنوات الخاصة)
+    channel_num = str(result.get('channel_id', channel_id)).replace('-100', '')
+    st.markdown(f"### [📥 فتح في تيليجرام](https://t.me/c/{channel_num}/{result['message_id']})")
     
     # عرض رقم النتيجة
     st.info(f"النتيجة {st.session_state.current_index + 1} من {len(st.session_state.results)}")
@@ -117,9 +150,16 @@ if st.session_state.results:
 # معلومات إضافية
 st.sidebar.title("معلومات")
 st.sidebar.info("""
-هذا التطبيق يبحث في قنوات تيليجرام الشهيرة للكتب.
-القنوات المدعومة:
-- BooksThief
-- librebook  
-- pdfdrive
+هذا التطبيق يبحث في قناة تيليجرام محددة.
+
+📚 **كيفية الاستخدام:**
+1. اكتب اسم الكتاب الذي تبحث عنه
+2. اضغط على زر "بحث"
+3. انتظر قليلاً حتى تظهر النتائج
+4. استخدم "التالي" و "السابق" للتنقل
+
+💡 **نصائح:**
+- ابحث باسم الكتاب أو المؤلف
+- جرب كلمات مفتاحية مختلفة
+- يشمل جميع أنواع الملفات (PDF, DOC, ZIP, EPUB, إلخ)
 """)
