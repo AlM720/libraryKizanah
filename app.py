@@ -1,13 +1,13 @@
+# app.py  (Streamlit + Telethon + نتيجة واحدة + بحث داخل أي جزء من النص)
 import streamlit as st
 from telethon.sync import TelegramClient
 from telethon.tl.types import InputMessagesFilterDocument
 import asyncio
 import unicodedata
-from datetime import datetime
 
 # ---------- الأسرار (من إعدادات Streamlit) ----------
 api_id   = int(st.secrets["api_id"])
-api_hash = st.secrets["api_hash"]
+api_hash = st.secrets["api_hash"])
 bot_token = st.secrets["bot_token"]
 channel_id = int(st.secrets["channel_id"])
 
@@ -21,15 +21,10 @@ def normalize_arabic(text: str) -> str:
         text = text.replace(k, v)
     return text.replace("ى", "ي").strip()
 
-# ---------- اتصال واحد طوال الجلسة ----------
-@st.cache_resource
-def get_client():
-    return TelegramClient("bot_session", api_id, api_hash)
-                          connection_retries=2, request_retries=2, timeout=10)
-
 # ---------- جلب النتائج ----------
 async def fetch_books(keyword: str, limit: int = 20):
-    client = get_client()
+    client = TelegramClient("bot_session", api_id, api_hash",
+                            connection_retries=2, request_retries=2, timeout=10)
     await client.start(bot_token=bot_token)
     keyword_norm = normalize_arabic(keyword)
     results = []
