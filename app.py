@@ -24,7 +24,7 @@ def normalize_arabic(text: str) -> str:
 # ---------- اتصال واحد طوال الجلسة ----------
 @st.cache_resource
 def get_client():
-    return TelegramClient("bot_session", api_id, api_hash",
+    return TelegramClient("bot_session", api_id, api_hash)
                           connection_retries=2, request_retries=2, timeout=10)
 
 # ---------- جلب النتائج ----------
