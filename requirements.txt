@@ -2,6 +2,5 @@ streamlit
 telethon
 nest_asyncio
 PyPDF2
-pdf2image
+PyMuPDF
 Pillow
-poppler-utils
