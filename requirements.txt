@@ -4,3 +4,4 @@ nest_asyncio
 PyPDF2
 PyMuPDF
 Pillow
+streamlit-autorefresh==0.1.7
