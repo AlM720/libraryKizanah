@@ -7,6 +7,9 @@ import io
 import time
 import uuid
 import gc
+from PyPDF2 import PdfReader
+from pdf2image import convert_from_bytes
+from PIL import Image
 
 # تفعيل تعدد المهام لبيئة Streamlit
 nest_asyncio.apply()
@@ -128,11 +131,12 @@ st.markdown("""
     
     .book-metadata {
         color: #7f8c8d;
-        font-size: 0.9rem;
+        font-size: 1rem;
         margin-bottom: 1rem;
-        padding: 0.5rem 0;
+        padding: 0.7rem 0;
         border-top: 1px solid #ecf0f1;
         border-bottom: 1px solid #ecf0f1;
+        font-weight: 500;
     }
     
     .book-metadata span {
@@ -141,10 +145,19 @@ st.markdown("""
     
     .book-description {
         color: #5a6c7d;
-        font-size: 0.95rem;
-        line-height: 1.7;
-        margin-bottom: 1rem;
+        font-size: 1rem;
+        line-height: 1.8;
+        margin-bottom: 1.5rem;
         text-align: justify;
+    }
+    
+    /* منطقة الأزرار */
+    .action-buttons-area {
+        background: #f8f9fa;
+        border-top: 2px solid #e9ecef;
+        padding: 1.5rem;
+        margin-top: 1rem;
+        border-radius: 4px;
     }
     
     /* الأزرار الكلاسيكية */
@@ -152,16 +165,40 @@ st.markdown("""
         background: #34495e !important;
         color: white !important;
         border: none !important;
-        border-radius: 2px !important;
-        padding: 0.6rem 2rem !important;
-        font-weight: 500 !important;
-        font-size: 1.05rem !important;
-        transition: all 0.2s ease !important;
+        border-radius: 4px !important;
+        padding: 0.85rem 1.5rem !important;
+        font-weight: 600 !important;
+        font-size: 1.1rem !important;
+        transition: all 0.3s ease !important;
+        letter-spacing: 0.3px !important;
     }
     
     .stButton>button:hover {
         background: #2c3e50 !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.25) !important;
+        transform: translateY(-2px) !important;
+    }
+    
+    .stButton>button:active {
+        transform: translateY(0) !important;
+    }
+    
+    /* أزرار الإجراءات الرئيسية */
+    div[data-testid="column"]:has(button) {
+        padding: 0.3rem;
+    }
+    
+    /* تحسين مظهر أزرار التحميل */
+    .stDownloadButton>button {
+        background: #27ae60 !important;
+        font-weight: 600 !important;
+        font-size: 1.05rem !important;
+        padding: 0.8rem 1.5rem !important;
+    }
+    
+    .stDownloadButton>button:hover {
+        background: #229954 !important;
+        box-shadow: 0 4px 8px rgba(39, 174, 96, 0.3) !important;
     }
     
     /* مدخلات النصوص */
@@ -602,6 +639,46 @@ def download_book_to_memory(message_id):
     progress_bar.empty()
     return buffer, file_name
 
+def get_pdf_page_count(message_id):
+    """حساب عدد صفحات الكتاب PDF"""
+    try:
+        buffer, file_name = download_book_to_memory(message_id)
+        if buffer and file_name.lower().endswith('.pdf'):
+            pdf_reader = PdfReader(buffer)
+            page_count = len(pdf_reader.pages)
+            buffer.close()
+            gc.collect()
+            return page_count
+        else:
+            return None
+    except Exception as e:
+        st.error(f"خطأ في حساب الصفحات: {e}")
+        return None
+
+def get_first_page_preview(message_id):
+    """استخراج أول صفحة من PDF كصورة"""
+    try:
+        buffer, file_name = download_book_to_memory(message_id)
+        if buffer and file_name.lower().endswith('.pdf'):
+            # تحويل أول صفحة إلى صورة
+            images = convert_from_bytes(
+                buffer.read(),
+                first_page=1,
+                last_page=1,
+                dpi=150
+            )
+            buffer.close()
+            gc.collect()
+            
+            if images:
+                return images[0]
+            return None
+        else:
+            return None
+    except Exception as e:
+        st.error(f"خطأ في إنشاء المعاينة: {e}")
+        return None
+
 # --- واجهة البحث ---
 if 'search_results' not in st.session_state:
     st.session_state.search_results = []
@@ -655,22 +732,61 @@ if st.session_state.search_results:
             <div class="book-number">النتيجة #{index}</div>
             <div class="book-main-title">{item['file_name']}</div>
             <div class="book-metadata">
-                <span>📁 الحجم: {item['size'] / (1024*1024):.2f} ميجابايت</span>
+                <span>الحجم: {item['size'] / (1024*1024):.2f} ميجابايت</span>
             </div>
             <div class="book-description">{caption_text}</div>
         </div>
         """, unsafe_allow_html=True)
         
-        col1, col2, col3 = st.columns([3, 2, 3])
+        st.markdown('<div class="action-buttons-area">', unsafe_allow_html=True)
+        
+        # الأزرار
+        col1, col2, col3 = st.columns(3)
+        
+        # زر عدد الصفحات
+        with col1:
+            pages_btn_key = f"pages_{item['id']}"
+            if st.button("عدد الصفحات", key=pages_btn_key, use_container_width=True):
+                state.last_activity = time.time()
+                
+                # التحقق من نوع الملف
+                if item['file_name'].lower().endswith('.pdf'):
+                    with st.spinner("جاري حساب عدد الصفحات..."):
+                        page_count = get_pdf_page_count(item['id'])
+                        if page_count:
+                            st.success(f"✓ عدد الصفحات: {page_count} صفحة")
+                        else:
+                            st.warning("لم نتمكن من حساب عدد الصفحات")
+                else:
+                    st.info("هذه الميزة متاحة فقط لملفات PDF")
+        
+        # زر المعاينة
         with col2:
+            preview_btn_key = f"preview_{item['id']}"
+            if st.button("معاينة الكتاب", key=preview_btn_key, use_container_width=True):
+                state.last_activity = time.time()
+                
+                # التحقق من نوع الملف
+                if item['file_name'].lower().endswith('.pdf'):
+                    with st.spinner("جاري تحضير المعاينة..."):
+                        first_page = get_first_page_preview(item['id'])
+                        if first_page:
+                            st.image(first_page, caption="الصفحة الأولى من الكتاب", use_container_width=True)
+                        else:
+                            st.warning("لم نتمكن من إنشاء المعاينة")
+                else:
+                    st.info("المعاينة متاحة فقط لملفات PDF")
+        
+        # زر التحميل
+        with col3:
             btn_key = f"btn_{item['id']}"
-            if st.button("تحميل الكتاب", key=btn_key, use_container_width=True):
+            if st.button("تحميل الآن", key=btn_key, use_container_width=True, type="primary"):
                 state.last_activity = time.time()
                 
                 buff, fname = download_book_to_memory(item['id'])
                 if buff:
                     st.download_button(
-                        label="حفظ الملف",
+                        label="حفظ على جهازك",
                         data=buff,
                         file_name=fname,
                         mime="application/octet-stream",
@@ -678,6 +794,7 @@ if st.session_state.search_results:
                         use_container_width=True
                     )
         
+        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown("<br>", unsafe_allow_html=True)
 
 elif query and search_button:
