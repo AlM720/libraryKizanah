@@ -8,7 +8,7 @@ import time
 import uuid
 import gc
 from PyPDF2 import PdfReader
-from pdf2image import convert_from_bytes
+import fitz  # PyMuPDF
 from PIL import Image
 
 # تفعيل تعدد المهام لبيئة Streamlit
@@ -660,19 +660,32 @@ def get_first_page_preview(message_id):
     try:
         buffer, file_name = download_book_to_memory(message_id)
         if buffer and file_name.lower().endswith('.pdf'):
-            # تحويل أول صفحة إلى صورة
-            images = convert_from_bytes(
-                buffer.read(),
-                first_page=1,
-                last_page=1,
-                dpi=150
-            )
-            buffer.close()
-            gc.collect()
+            # فتح PDF باستخدام PyMuPDF
+            pdf_document = fitz.open(stream=buffer.read(), filetype="pdf")
             
-            if images:
-                return images[0]
-            return None
+            # الحصول على الصفحة الأولى
+            if len(pdf_document) > 0:
+                first_page = pdf_document[0]
+                
+                # تحويل الصفحة إلى صورة
+                # zoom للحصول على جودة أفضل (2 = دقة عالية)
+                zoom = 2
+                mat = fitz.Matrix(zoom, zoom)
+                pix = first_page.get_pixmap(matrix=mat)
+                
+                # تحويل إلى PIL Image
+                img_data = pix.tobytes("png")
+                img = Image.open(io.BytesIO(img_data))
+                
+                pdf_document.close()
+                buffer.close()
+                gc.collect()
+                
+                return img
+            else:
+                pdf_document.close()
+                buffer.close()
+                return None
         else:
             return None
     except Exception as e:
