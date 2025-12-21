@@ -6,6 +6,7 @@ import nest_asyncio
 import io
 import time
 import uuid
+import gc
 
 # تفعيل تعدد المهام لبيئة Streamlit
 nest_asyncio.apply()
@@ -288,15 +289,24 @@ st.markdown("""
         color: white;
         border-color: #2c3e50;
     }
+    
+    /* صندوق إنهاء الجلسة للمشرف */
+    .admin-control-box {
+        background: #fff3cd;
+        border: 2px solid #ffc107;
+        border-radius: 4px;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # --- ⚙️ إعدادات النظام ---
 TIMEOUT_SECONDS = 180
 
-required_secrets = ["api_id", "api_hash", "session_string", "channel_id", "admin_password"]
+required_secrets = ["api_id", "api_hash", "session_string", "channel_id", "admin_password", "key"]
 if not all(key in st.secrets for key in required_secrets):
-    st.error("⚠️ خطأ: تأكد من إعداد ملف secrets.toml بكامل البيانات.")
+    st.error("⚠️ خطأ: تأكد من إعداد ملف secrets.toml بكامل البيانات (بما في ذلك key).")
     st.stop()
 
 # --- 🧠 الذاكرة المشتركة ---
@@ -316,6 +326,16 @@ if 'user_token' not in st.session_state:
 if 'is_admin' not in st.session_state:
     st.session_state.is_admin = False
 
+# --- دالة تنظيف الذاكرة ---
+def clear_session_data():
+    """تنظيف البيانات المؤقتة والذاكرة"""
+    if 'search_results' in st.session_state:
+        st.session_state.search_results = []
+    if 'search_time' in st.session_state:
+        st.session_state.search_time = None
+    # تنظيف الذاكرة
+    gc.collect()
+
 # --- 🔐 منطق الحارس ---
 def check_access():
     current_time = time.time()
@@ -323,6 +343,7 @@ def check_access():
     if state.locked and (current_time - state.last_activity > TIMEOUT_SECONDS):
         state.locked = False
         state.current_user_token = None
+        clear_session_data()
     
     if st.session_state.is_admin:
         return "ADMIN_ACCESS"
@@ -373,6 +394,31 @@ if status == False:
     with col2:
         if st.button("تحديث الحالة", use_container_width=True):
             st.rerun()
+    
+    st.markdown("---")
+    
+    # صندوق إنهاء الجلسة للمشرف
+    with st.expander("🔐 لوحة تحكم المشرف"):
+        st.markdown('<div class="admin-control-box">', unsafe_allow_html=True)
+        st.markdown("**إنهاء الجلسة الحالية قسرياً**")
+        st.caption("استخدم هذا الخيار لإنهاء جلسة المستخدم الحالي فوراً")
+        
+        supervisor_key = st.text_input("مفتاح المشرف:", type="password", key="supervisor_key_waiting")
+        
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("إنهاء الجلسة الحالية", use_container_width=True, type="primary"):
+                if supervisor_key == st.secrets["key"]:
+                    state.locked = False
+                    state.current_user_token = None
+                    clear_session_data()
+                    st.success("✓ تم إنهاء الجلسة بنجاح")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ مفتاح المشرف غير صحيح")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("---")
     
@@ -467,6 +513,7 @@ with col_info3:
         else:
             state.locked = False
             state.current_user_token = None
+        clear_session_data()  # تنظيف البيانات عند الخروج
         st.rerun()
 
 st.markdown("<br>", unsafe_allow_html=True)
