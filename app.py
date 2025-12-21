@@ -366,6 +366,7 @@ st.markdown("""
 
 # --- ⚙️ إعدادات النظام ---
 TIMEOUT_SECONDS = 180
+ITEMS_PER_PAGE = 5
 
 required_secrets = ["api_id", "api_hash", "session_string", "channel_id", "admin_password", "key"]
 if not all(key in st.secrets for key in required_secrets):
@@ -397,6 +398,9 @@ if 'duplicate_groups' not in st.session_state:
 
 if 'scan_completed' not in st.session_state:
     st.session_state.scan_completed = False
+
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = 0
 
 # --- دالة تنظيف الذاكرة ---
 def clear_session_data():
@@ -626,6 +630,7 @@ if st.session_state.admin_mode:
             st.session_state.admin_mode = False
             st.session_state.duplicate_groups = []
             st.session_state.scan_completed = False
+            st.session_state.current_page = 0
             st.rerun()
     
     st.markdown("---")
@@ -650,6 +655,7 @@ if st.session_state.admin_mode:
                     
                     st.session_state.duplicate_groups = duplicates
                     st.session_state.scan_completed = True
+                    st.session_state.current_page = 0
                     st.rerun()
     else:
         if len(st.session_state.duplicate_groups) == 0:
@@ -663,6 +669,7 @@ if st.session_state.admin_mode:
             if st.button("🔄 إعادة المسح", use_container_width=True):
                 st.session_state.scan_completed = False
                 st.session_state.duplicate_groups = []
+                st.session_state.current_page = 0
                 st.rerun()
         else:
             st.success(f"✓ تم العثور على **{len(st.session_state.duplicate_groups)}** مجموعة من الملفات المحتملة المكررة")
@@ -670,11 +677,43 @@ if st.session_state.admin_mode:
             if st.button("🔄 إعادة المسح", use_container_width=True):
                 st.session_state.scan_completed = False
                 st.session_state.duplicate_groups = []
+                st.session_state.current_page = 0
                 st.rerun()
             
             st.markdown("---")
             
-            for idx, group in enumerate(st.session_state.duplicate_groups, 1):
+            # حساب عدد الصفحات
+            total_groups = len(st.session_state.duplicate_groups)
+            total_pages = (total_groups + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+            current_page = st.session_state.current_page
+            
+            # عرض معلومات الصفحة
+            start_idx = current_page * ITEMS_PER_PAGE
+            end_idx = min(start_idx + ITEMS_PER_PAGE, total_groups)
+            
+            st.info(f"📄 الصفحة {current_page + 1} من {total_pages} | عرض المجموعات {start_idx + 1} - {end_idx} من {total_groups}")
+            
+            # أزرار التنقل العلوية
+            col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
+            
+            with col_nav1:
+                if current_page > 0:
+                    if st.button("⏮️ السابق", use_container_width=True):
+                        st.session_state.current_page -= 1
+                        st.rerun()
+            
+            with col_nav3:
+                if current_page < total_pages - 1:
+                    if st.button("التالي ⏭️", use_container_width=True, type="primary"):
+                        st.session_state.current_page += 1
+                        st.rerun()
+            
+            st.markdown("---")
+            
+            # عرض المجموعات الحالية فقط
+            current_groups = st.session_state.duplicate_groups[start_idx:end_idx]
+            
+            for idx, group in enumerate(current_groups, start=start_idx + 1):
                 st.markdown(f"""
                 <div class="duplicate-card">
                     <h3 style="color: #c0392b;">🔴 مجموعة مكررة #{idx}</h3>
@@ -684,7 +723,7 @@ if st.session_state.admin_mode:
                 """, unsafe_allow_html=True)
                 
                 for file_idx, file in enumerate(group, 1):
-                    with st.expander(f"📄 الملف {file_idx}: {file['name']}", expanded=True):
+                    with st.expander(f"📄 الملف {file_idx}: {file['name']}", expanded=False):
                         st.markdown(f"""
                         <div class="file-info">
                             <p><strong>الاسم:</strong> {file['name']}</p>
@@ -720,14 +759,50 @@ if st.session_state.admin_mode:
                                         
                                         if success:
                                             st.success("✓ تم الحذف بنجاح!")
+                                            
+                                            # حذف الملف من القائمة مباشرة دون إعادة المسح
+                                            for i, g in enumerate(st.session_state.duplicate_groups):
+                                                # البحث عن المجموعة التي تحتوي هذا الملف
+                                                for j, f in enumerate(g):
+                                                    if f['id'] == file['id']:
+                                                        # حذف الملف من المجموعة
+                                                        del st.session_state.duplicate_groups[i][j]
+                                                        
+                                                        # إذا أصبحت المجموعة تحتوي على ملف واحد فقط، احذف المجموعة كلها
+                                                        if len(st.session_state.duplicate_groups[i]) <= 1:
+                                                            del st.session_state.duplicate_groups[i]
+                                                        
+                                                        break
+                                            
+                                            # إذا انتهت كل المجموعات، ارجع للصفحة الأولى
+                                            if len(st.session_state.duplicate_groups) == 0:
+                                                st.session_state.current_page = 0
+                                            # إذا الصفحة الحالية أصبحت فارغة، ارجع للصفحة السابقة
+                                            elif st.session_state.current_page * ITEMS_PER_PAGE >= len(st.session_state.duplicate_groups):
+                                                st.session_state.current_page = max(0, st.session_state.current_page - 1)
+                                            
                                             time.sleep(1)
-                                            st.session_state.scan_completed = False
-                                            st.session_state.duplicate_groups = []
                                             st.rerun()
                                         else:
                                             st.error("فشل الحذف")
                 
-                st.markdown("<br><br>", unsafe_allow_html=True)
+                st.markdown("<br>", unsafe_allow_html=True)
+            
+            # أزرار التنقل السفلية
+            st.markdown("---")
+            col_nav4, col_nav5, col_nav6 = st.columns([1, 2, 1])
+            
+            with col_nav4:
+                if current_page > 0:
+                    if st.button("⏮️ السابق", use_container_width=True, key="prev_bottom"):
+                        st.session_state.current_page -= 1
+                        st.rerun()
+            
+            with col_nav6:
+                if current_page < total_pages - 1:
+                    if st.button("التالي ⏭️", use_container_width=True, type="primary", key="next_bottom"):
+                        st.session_state.current_page += 1
+                        st.rerun()
     
     st.stop()
 
