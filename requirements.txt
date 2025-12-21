@@ -1,3 +1,7 @@
 streamlit
 telethon
 nest_asyncio
+PyPDF2
+pdf2image
+Pillow
+poppler-utils
