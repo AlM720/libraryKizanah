@@ -772,3 +772,265 @@ if status == False:
     with st.expander("🔐 لوحة تحكم المشرف"):
         st.markdown('<div class="admin-control-box">', unsafe_allow_html=True)
         st.markdown("**إنهاء الجلسة الحالية أو الدخول للوحة التحكم**")
+        
+        supervisor_key = st.text_input("مفتاح المشرف:", type="password", key="supervisor_key_waiting")
+        
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("إنهاء الجلسة الحالية", use_container_width=True):
+                if supervisor_key == st.secrets["key"]:
+                    state.locked = False
+                    state.current_user_token = None
+                    clear_session_data()
+                    st.success("✓ تم إنهاء الجلسة بنجاح")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ مفتاح المشرف غير صحيح")
+        
+        with col_btn2:
+            if st.button("لوحة إدارة المكررات", use_container_width=True, type="primary"):
+                if supervisor_key == st.secrets["key"]:
+                    st.session_state.admin_mode = True
+                    state.locked = False
+                    state.current_user_token = None
+                    clear_session_data()
+                    st.rerun()
+                else:
+                    st.error("❌ مفتاح المشرف غير صحيح")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    with st.expander("دخول المسؤول"):
+        password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_locked")
+        if st.button("دخول"):
+            if password_attempt == st.secrets["admin_password"]:
+                st.session_state.is_admin = True
+                st.success("✓ تم التحقق من الهوية")
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.error("كلمة المرور غير صحيحة")
+    
+    st.stop()
+
+# ==========================================
+# 👋 شاشة الترحيب
+# ==========================================
+elif status == "READY_TO_ENTER":
+    st.markdown("""
+    <div class="library-header">
+        <div class="library-title">المكتبة الرقمية</div>
+        <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="welcome-box">
+        <div class="welcome-title">مرحباً بك في المكتبة</div>
+        <div class="welcome-description">
+            يوفر لك هذا النظام إمكانية البحث في آلاف الكتب والمراجع العلمية والأدبية
+            من مختلف المجالات المعرفية. استخدم محرك البحث للعثور على الكتاب المطلوب
+            وتحميله مباشرة إلى جهازك.
+        </div>
+        <div style="margin-bottom: 2rem;">
+            <span class="badge" style="background: #27ae60; color: white; border-color: #229954;">
+                <span class="status-indicator" style="width: 8px; height: 8px; margin-left: 0.3rem;"></span>
+                النظام متاح الآن
+            </span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("بدء استخدام المكتبة", use_container_width=True, type="primary"):
+            state.locked = True
+            state.current_user_token = st.session_state.user_token
+            state.last_activity = time.time()
+            st.rerun()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    with st.expander("🔐 لوحة تحكم المشرف"):
+        st.markdown('<div class="admin-control-box">', unsafe_allow_html=True)
+        st.markdown("**الدخول للوحة إدارة المكررات**")
+        
+        supervisor_key = st.text_input("مفتاح المشرف:", type="password", key="supervisor_key_welcome")
+        
+        if st.button("دخول لوحة التحكم", use_container_width=True, type="primary"):
+            if supervisor_key == st.secrets["key"]:
+                st.session_state.admin_mode = True
+                st.rerun()
+            else:
+                st.error("❌ مفتاح المشرف غير صحيح")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    with st.expander("دخول المسؤول"):
+        password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_open")
+        if st.button("دخول"):
+            if password_attempt == st.secrets["admin_password"]:
+                st.session_state.is_admin = True
+                st.rerun()
+    
+    st.stop()
+
+# ==========================================
+# ✅ التطبيق الرئيسي
+# ==========================================
+
+st.markdown("""
+<div class="library-header">
+    <div class="library-title">المكتبة الرقمية</div>
+    <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
+</div>
+""", unsafe_allow_html=True)
+
+if st.session_state.is_admin:
+    status_badge = '<span class="badge badge-admin">مسؤول النظام</span>'
+else:
+    time_left_session = TIMEOUT_SECONDS - int(time.time() - state.last_activity)
+    status_badge = f'<span class="badge">الوقت المتبقي: {time_left_session} ثانية</span>'
+
+col_info1, col_info2, col_info3 = st.columns([2, 4, 2])
+
+with col_info1:
+    st.markdown(f'<div style="padding: 0.5rem;">{status_badge}</div>', unsafe_allow_html=True)
+
+with col_info2:
+    if st.session_state.is_admin:
+        if st.button("🗂️ لوحة إدارة المكررات", use_container_width=True):
+            st.session_state.admin_mode = True
+            st.rerun()
+
+with col_info3:
+    if st.button("إنهاء الجلسة", use_container_width=True):
+        if st.session_state.is_admin:
+            st.session_state.is_admin = False
+        else:
+            state.locked = False
+            state.current_user_token = None
+        clear_session_data()
+        st.rerun()
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+if status == "ADMIN_ACCESS" and state.locked and state.current_user_token != st.session_state.user_token:
+    st.warning("⚠️ تنبيه: يوجد مستخدم نشط آخر. الاستخدام المتزامن قد يسبب مشاكل في النظام.")
+    st.markdown("<br>", unsafe_allow_html=True)
+
+if 'search_results' not in st.session_state:
+    st.session_state.search_results = []
+if 'search_time' not in st.session_state:
+    st.session_state.search_time = None
+
+st.markdown('<div class="search-container">', unsafe_allow_html=True)
+st.markdown('<span class="search-label">البحث في فهرس المكتبة</span>', unsafe_allow_html=True)
+
+col_search, col_btn = st.columns([6, 1])
+
+with col_search:
+    query = st.text_input(
+        "بحث",
+        placeholder="أدخل عنوان الكتاب، اسم المؤلف، أو الموضوع...",
+        label_visibility="collapsed"
+    )
+
+with col_btn:
+    search_button = st.button("بحث", use_container_width=True, type="primary")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+if search_button and query:
+    state.last_activity = time.time()
+    start_time = time.time()
+    
+    with st.spinner("جاري البحث في قاعدة البيانات..."):
+        st.session_state.search_results = search_books_async(query)
+        st.session_state.search_time = round(time.time() - start_time, 2)
+
+if st.session_state.search_results:
+    st.markdown(f"""
+    <div class="results-header">
+        <div class="results-title">نتائج البحث</div>
+        <div class="results-stats">
+            عدد النتائج: {len(st.session_state.search_results)} • 
+            وقت البحث: {st.session_state.search_time} ثانية
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    for index, item in enumerate(st.session_state.search_results, 1):
+        caption_text = item['caption'].strip() if item['caption'] else "لا يوجد وصف متاح لهذا الكتاب."
+        
+        st.markdown(f"""
+        <div class="book-item">
+            <div class="book-number">النتيجة #{index}</div>
+            <div class="book-main-title">{item['file_name']}</div>
+            <div class="book-metadata">
+                <span>الحجم: {item['size'] / (1024*1024):.2f} ميجابايت</span>
+            </div>
+            <div class="book-description">{caption_text}</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown('<div class="action-buttons-area">', unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            pages_btn_key = f"pages_{item['id']}"
+            if st.button("عدد الصفحات", key=pages_btn_key, use_container_width=True):
+                state.last_activity = time.time()
+                
+                if item['file_name'].lower().endswith('.pdf'):
+                    with st.spinner("جاري حساب عدد الصفحات..."):
+                        page_count = get_pdf_page_count(item['id'])
+                        if page_count:
+                            st.success(f"✓ عدد الصفحات: {page_count} صفحة")
+                        else:
+                            st.warning("لم نتمكن من حساب عدد الصفحات")
+                else:
+                    st.info("هذه الميزة متاحة فقط لملفات PDF")
+        
+        with col2:
+            preview_btn_key = f"preview_{item['id']}"
+            if st.button("معاينة الكتاب", key=preview_btn_key, use_container_width=True):
+                state.last_activity = time.time()
+                
+                if item['file_name'].lower().endswith('.pdf'):
+                    with st.spinner("جاري تحضير المعاينة..."):
+                        first_page = get_first_page_preview(item['id'])
+                        if first_page:
+                            st.image(first_page, caption="الصفحة الأولى من الكتاب", use_container_width=True)
+                        else:
+                            st.warning("لم نتمكن من إنشاء المعاينة")
+                else:
+                    st.info("المعاينة متاحة فقط لملفات PDF")
+        
+        with col3:
+            btn_key = f"btn_{item['id']}"
+            if st.button("تحميل الآن", key=btn_key, use_container_width=True, type="primary"):
+                state.last_activity = time.time()
+                
+                buff, fname = download_book_to_memory(item['id'])
+                if buff:
+                    st.download_button(
+                        label="حفظ على جهازك",
+                        data=buff,
+                        file_name=fname,
+                        mime="application/octet-stream",
+                        key=f"save_{item['id']}",
+                        use_container_width=True
+                    )
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+elif query and search_button:
+    st.info("لم يتم العثور على نتائج مطابقة. حاول استخدام كلمات بحث مختلفة.")
