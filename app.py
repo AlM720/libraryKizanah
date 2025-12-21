@@ -10,7 +10,7 @@ import gc
 from PyPDF2 import PdfReader
 import fitz  # PyMuPDF
 from PIL import Image
-from collections import defaultdict  # إضافة لدعم إدارة المكررات
+from collections import defaultdict
 
 # تفعيل تعدد المهام لبيئة Streamlit
 nest_asyncio.apply()
@@ -18,24 +18,36 @@ nest_asyncio.apply()
 # إعداد الصفحة
 st.set_page_config(
     page_title="باحث الكتب - المكتبة الرقمية",
-    page_icon="📚",
+    page_icon="📚",  # سيتم استبدالها بأيقونة Font Awesome في الواجهة
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- تصميم CSS احترافي يشبه المكتبات الأكاديمية ---
+# --- تصميم CSS محسن مع خلفية وأيقونات Font Awesome ---
 st.markdown("""
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 <style>
-    /* خلفية وألوان عامة */
+    /* خلفية عامة لرفوف كتب (صورة عامة بدون نصوص أو أسماء كتب) */
     .stApp {
-        background-color: #f9f9f9;
+        background-image: url("https://images.unsplash.com/photo-1593430980369-68efc5a5eb34?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8Ym9va3NoZWxmfGVufDB8fDB8fHww");
+        background-size: cover;
+        background-position: center;
+        background-repeat: no-repeat;
         color: #333333;
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
     
+    /* لجعل العناصر شفافة قليلاً لتتناسب مع الخلفية */
+    .stMarkdown, .stExpander, .stButton, .stTextInput, .stProgress, .stAlert, .header {
+        background-color: rgba(255, 255, 255, 0.85);
+        border-radius: 8px;
+        padding: 15px;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    }
+    
     /* الهيدر */
     .header {
-        background-color: #2c3e50;
+        background-color: rgba(44, 62, 80, 0.9);
         padding: 20px;
         text-align: center;
         border-radius: 8px;
@@ -73,33 +85,42 @@ st.markdown("""
         color: white;
     }
     
-    /* الزر */
+    /* الزر مع تأثير انتقال */
     .stButton > button {
         background-color: #3498db;
         color: white;
         border: none;
-        border-radius: 4px;
-        padding: 10px 20px;
+        border-radius: 6px;
+        padding: 12px 24px;
         font-size: 16px;
-        transition: background-color 0.3s;
+        transition: background-color 0.3s ease, transform 0.2s;
     }
     
     .stButton > button:hover {
         background-color: #2980b9;
+        transform: translateY(-2px);
     }
     
     /* الإكسباندير */
     .stExpander {
         border: 1px solid #e0e0e0;
-        border-radius: 4px;
-        background-color: white;
+        border-radius: 6px;
+        background-color: rgba(255, 255, 255, 0.9);
     }
     
     /* التنبيهات */
     .stAlert {
-        border-radius: 4px;
+        border-radius: 6px;
         padding: 15px;
     }
+    
+    /* استبدال الإيموجي بأيقونات Font Awesome */
+    .icon-book { color: #3498db; }
+    .icon-clock { color: #e67e22; }
+    .icon-lock { color: #e74c3c; }
+    .icon-search { color: #27ae60; }
+    .icon-trash { color: #c0392b; }
+    .icon-refresh { color: #2980b9; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -162,7 +183,7 @@ def check_access():
 status = check_access()
 
 # ==========================================
-# 🛑 شاشة الانتظار
+# 🛑 شاشة الانتظار (مع أيقونات جديدة)
 # ==========================================
 if status == False:
     st.markdown("""
@@ -177,8 +198,8 @@ if status == False:
     if time_left < 0: time_left = 0
     
     st.markdown("""
-<div style="text-align: center; padding: 20px; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-    <h3>⏸️ النظام مشغول حالياً</h3>
+<div style="text-align: center; padding: 20px; background-color: rgba(255,255,255,0.85); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+    <h3><i class="fas fa-pause icon-clock"></i> النظام مشغول حالياً</h3>
     <p>يستخدم أحد الباحثين النظام في الوقت الحالي.</p>
     <p>للحفاظ على استقرار الخدمة، يُسمح بدخول مستخدم واحد فقط في كل مرة.</p>
     <h4>{} ثانية</h4>
@@ -188,13 +209,13 @@ if status == False:
     
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
-        if st.button("تحديث الحالة", use_container_width=True):
+        if st.button("<i class='fas fa-sync-alt icon-refresh'></i> تحديث الحالة", use_container_width=True):
             st.rerun()
     
     st.markdown("---")
     
     # صندوق إنهاء الجلسة للمشرف
-    with st.expander("🔐 لوحة تحكم المشرف"):
+    with st.expander("<i class='fas fa-cog icon-lock'></i> لوحة تحكم المشرف"):
         st.markdown('<br>', unsafe_allow_html=True)
         st.markdown("**إنهاء الجلسة الحالية قسرياً**")
         st.caption("استخدم هذا الخيار لإنهاء جلسة المستخدم الحالي فوراً")
@@ -218,7 +239,7 @@ if status == False:
     
     st.markdown("---")
     
-    with st.expander("دخول المسؤول"):
+    with st.expander("<i class='fas fa-user-shield icon-lock'></i> دخول المسؤول"):
         password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_locked")
         if st.button("دخول"):
             if password_attempt == st.secrets["admin_password"]:
@@ -243,8 +264,8 @@ elif status == "READY_TO_ENTER":
 """, unsafe_allow_html=True)
     
     st.markdown("""
-<div style="text-align: center; padding: 20px; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-    <h3>مرحباً بك في المكتبة</h3>
+<div style="text-align: center; padding: 20px; background-color: rgba(255,255,255,0.85); border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+    <h3><i class="fas fa-door-open icon-search"></i> مرحباً بك في المكتبة</h3>
     <p>يوفر لك هذا النظام إمكانية البحث في آلاف الكتب والمراجع العلمية والأدبية<br>
     من مختلف المجالات المعرفية. استخدم محرك البحث للعثور على الكتاب المطلوب<br>
     وتحميله مباشرة إلى جهازك.</p>
@@ -262,7 +283,7 @@ elif status == "READY_TO_ENTER":
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    with st.expander("دخول المسؤول"):
+    with st.expander("<i class='fas fa-user-shield icon-lock'></i> دخول المسؤول"):
         password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_open")
         if st.button("دخول"):
             if password_attempt == st.secrets["admin_password"]:
@@ -444,7 +465,7 @@ def get_first_page_preview(message_id):
         st.error(f"خطأ في إنشاء المعاينة: {e}")
         return None
 
-# --- دوال إدارة المكررات (من admin.py) ---
+# --- دوال إدارة المكررات ---
 async def scan_for_duplicates():
     """مسح القناة والبحث عن الملفات المكررة"""
     client = await get_client()
@@ -492,12 +513,15 @@ async def delete_file(message_id):
     finally:
         await client.disconnect()
 
-# --- حالة الإدارة (من admin.py، مع تعديل لعدم التداخل) ---
+# --- حالة الإدارة ---
 if 'admin_duplicate_groups' not in st.session_state:
     st.session_state.admin_duplicate_groups = []
 
 if 'admin_scan_completed' not in st.session_state:
     st.session_state.admin_scan_completed = False
+
+if 'admin_current_page' not in st.session_state:
+    st.session_state.admin_current_page = 0
 
 # --- واجهة المستخدم الرئيسية مع التبويبات ---
 st.markdown("---")
@@ -506,7 +530,6 @@ if st.session_state.is_admin:
     tab_search, tab_admin = st.tabs(["البحث في الكتب", "إدارة المكررات"])
 
     with tab_search:
-        # واجهة البحث (الجزء المفقود من app.py، تم إعادة بناؤه بناءً على السياق)
         if 'search_results' not in st.session_state:
             st.session_state.search_results = []
         if 'search_time' not in st.session_state:
@@ -514,7 +537,7 @@ if st.session_state.is_admin:
 
         st.markdown("""
         <div style="text-align: center; padding: 10px;">
-            <h3>البحث في الكتب</h3>
+            <h3><i class="fas fa-search icon-search"></i> البحث في الكتب</h3>
         </div>
         """, unsafe_allow_html=True)
 
@@ -553,10 +576,9 @@ if st.session_state.is_admin:
                                 st.image(img, caption="الصفحة الأولى")
 
     with tab_admin:
-        # واجهة إدارة المكررات (من admin.py)
         st.markdown("""
         <div style="text-align: center; padding: 10px;">
-            <h3>إدارة الملفات المكررة</h3>
+            <h3><i class="fas fa-copy icon-book"></i> إدارة الملفات المكررة</h3>
             <p>نظام الكشف والحذف الذكي</p>
         </div>
         """, unsafe_allow_html=True)
@@ -584,34 +606,44 @@ if st.session_state.is_admin:
                         
                         st.session_state.admin_duplicate_groups = duplicates
                         st.session_state.admin_scan_completed = True
+                        st.session_state.admin_current_page = 0
                         st.rerun()
         else:
             if len(st.session_state.admin_duplicate_groups) == 0:
                 st.markdown("""
-                <div style="text-align: center; padding: 20px; background-color: white; border-radius: 8px;">
+                <div style="text-align: center; padding: 20px; background-color: rgba(255,255,255,0.85); border-radius: 8px;">
                     <h2>رائع!</h2>
                     <p>لا توجد ملفات مكررة في القناة</p>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                if st.button("إعادة المسح", use_container_width=True):
+                if st.button("<i class='fas fa-sync-alt icon-refresh'></i> إعادة المسح", use_container_width=True):
                     st.session_state.admin_scan_completed = False
                     st.session_state.admin_duplicate_groups = []
+                    st.session_state.admin_current_page = 0
                     st.rerun()
             else:
-                st.success(f"تم العثور على **{len(st.session_state.admin_duplicate_groups)}** مجموعة من الملفات المحتملة المكررة")
+                total_groups = len(st.session_state.admin_duplicate_groups)
+                st.success(f"تم العثور على **{total_groups}** مجموعة من الملفات المحتملة المكررة")
                 
-                if st.button("إعادة المسح", use_container_width=True):
+                if st.button("<i class='fas fa-sync-alt icon-refresh'></i> إعادة المسح", use_container_width=True):
                     st.session_state.admin_scan_completed = False
                     st.session_state.admin_duplicate_groups = []
+                    st.session_state.admin_current_page = 0
                     st.rerun()
                 
                 st.markdown("---")
                 
-                # عرض المجموعات المكررة
-                for idx, group in enumerate(st.session_state.admin_duplicate_groups, 1):
+                # تجزئة العرض: 5 مجموعات لكل صفحة
+                page_size = 5
+                start_idx = st.session_state.admin_current_page * page_size
+                end_idx = start_idx + page_size
+                displayed_groups = st.session_state.admin_duplicate_groups[start_idx:end_idx]
+                
+                # عرض المجموعات المعروضة
+                for idx, group in enumerate(displayed_groups, start_idx + 1):
                     st.markdown(f"""
-                    <div style="padding: 10px; background-color: white; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="padding: 10px; background-color: rgba(255,255,255,0.85); border-radius: 8px; margin-bottom: 20px;">
                         <h4>مجموعة مكررة #{idx}</h4>
                         <p><strong>الحجم المشترك:</strong> {group[0]['size'] / (1024*1024):.2f} ميجابايت</p>
                         <p><strong>عدد الملفات:</strong> {len(group)} ملف</p>
@@ -633,7 +665,7 @@ if st.session_state.is_admin:
                             with col1:
                                 if st.button(f"فحص عدد الصفحات", key=f"admin_check_pages_{file['id']}"):
                                     with st.spinner("جاري الفحص..."):
-                                        pages = get_pdf_page_count(file['id'])  # استخدام دالة app.py الموحدة
+                                        pages = get_pdf_page_count(file['id'])
                                         if pages:
                                             st.success(f"عدد الصفحات: {pages}")
                                         else:
@@ -641,7 +673,7 @@ if st.session_state.is_admin:
                             
                             with col2:
                                 delete_key = f"admin_delete_{file['id']}"
-                                if st.button(f"حذف هذا الملف", key=delete_key, type="primary"):
+                                if st.button(f"<i class='fas fa-trash icon-trash'></i> حذف هذا الملف", key=delete_key, type="primary"):
                                     st.warning("تأكيد الحذف")
                                     confirm_key = f"admin_confirm_{file['id']}"
                                     if st.button(f"نعم، احذف نهائياً", key=confirm_key):
@@ -654,14 +686,28 @@ if st.session_state.is_admin:
                                             if success:
                                                 st.success("تم الحذف بنجاح!")
                                                 time.sleep(1)
-                                                # إعادة المسح
+                                                # إعادة المسح بعد الحذف
                                                 st.session_state.admin_scan_completed = False
                                                 st.session_state.admin_duplicate_groups = []
+                                                st.session_state.admin_current_page = 0
                                                 st.rerun()
                                             else:
                                                 st.error("فشل الحذف")
                     
                     st.markdown("<br>", unsafe_allow_html=True)
+                
+                # أزرار التنقل بين الصفحات
+                col_prev, col_next = st.columns(2)
+                with col_prev:
+                    if st.session_state.admin_current_page > 0:
+                        if st.button("<i class='fas fa-arrow-left'></i> السابق", use_container_width=True):
+                            st.session_state.admin_current_page -= 1
+                            st.rerun()
+                with col_next:
+                    if end_idx < total_groups:
+                        if st.button("<i class='fas fa-arrow-right'></i> التالي", use_container_width=True):
+                            st.session_state.admin_current_page += 1
+                            st.rerun()
 
 else:
     # واجهة البحث فقط للمستخدم العادي
@@ -672,7 +718,7 @@ else:
 
     st.markdown("""
     <div style="text-align: center; padding: 10px;">
-        <h3>البحث في الكتب</h3>
+        <h3><i class="fas fa-search icon-search"></i> البحث في الكتب</h3>
     </div>
     """, unsafe_allow_html=True)
 
