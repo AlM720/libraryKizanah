@@ -13,17 +13,18 @@ import fitz  # PyMuPDF
 from PIL import Image
 from collections import defaultdict
 
-# --- إعدادات الصفحة وتشغيل المهام غير المتزامنة ---
+# تفعيل تعدد المهام لبيئة Streamlit
 nest_asyncio.apply()
 
+# إعداد الصفحة
 st.set_page_config(
-    page_title="المكتبة الرقمية",
+    page_title="المكتبة الرقمية - الإدارة",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- تصميم CSS احترافي ومتجاوب ---
+# --- تصميم CSS الجديد (المتجاوب للجوال) مدمج مع القديم ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;700&display=swap');
@@ -32,121 +33,156 @@ st.markdown("""
     
     /* تحسين العرض على الجوال */
     @media (max-width: 768px) {
-        .library-title { font-size: 1.8rem !important; }
-        .book-item { padding: 1rem !important; }
-        .action-buttons-area { padding: 1rem !important; }
+        .library-title { font-size: 1.5rem !important; }
+        .book-item { padding: 0.8rem !important; }
+        .action-buttons-area { padding: 0.5rem !important; }
+        .stButton>button { font-size: 0.9rem !important; padding: 0.5rem !important; }
     }
 
     /* الهيدر */
     .library-header {
         background: linear-gradient(135deg, #2c3e50 0%, #3498db 100%);
-        padding: 2rem 0;
+        padding: 1.5rem 0;
         margin-bottom: 2rem;
         border-radius: 0 0 15px 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    .library-title {
         color: white;
-        font-size: 2.5rem;
-        font-weight: 700;
         text-align: center;
-        margin: 0;
     }
-    .library-subtitle {
-        color: #ecf0f1;
-        text-align: center;
-        margin-top: 0.5rem;
-    }
+    .library-title { font-size: 2.2rem; font-weight: 700; margin: 0; }
+    .library-subtitle { color: #ecf0f1; margin-top: 0.5rem; font-size: 0.9rem; }
 
-    /* بطاقة الكتاب */
+    /* بطاقات الكتب */
     .book-item {
         background: white;
         border: 1px solid #e0e0e0;
-        border-right: 5px solid #3498db;
+        border-right: 4px solid #3498db;
         border-radius: 8px;
-        padding: 1.5rem;
+        padding: 1.2rem;
         margin-bottom: 1rem;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        transition: transform 0.2s;
     }
-    .book-item:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    }
-    .book-main-title {
-        color: #2c3e50;
-        font-size: 1.3rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-    }
-    .book-details {
-        font-size: 0.9rem;
-        color: #7f8c8d;
-        margin-bottom: 1rem;
-    }
-    
-    /* الأزرار */
-    .stButton>button {
-        width: 100%;
-        border-radius: 8px;
+    .book-main-title { color: #2c3e50; font-size: 1.2rem; font-weight: 700; }
+    .book-metadata { color: #7f8c8d; font-size: 0.85rem; margin: 0.5rem 0; }
+
+    /* شارات الحالة */
+    .badge {
+        display: inline-block;
+        padding: 0.3rem 0.8rem;
+        background: #f1f2f6;
+        color: #2f3542;
+        border-radius: 15px;
+        font-size: 0.8rem;
         font-weight: bold;
+        border: 1px solid #dfe4ea;
     }
-    
-    /* إخفاء عناصر Streamlit الافتراضية */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
+    .badge-admin { background: #ff6b6b; color: white; border: none; }
+    .badge-timer { background: #2ed573; color: white; border: none; }
+
+    /* صناديق التنبيهات */
+    .waiting-box {
+        background: #fff; border: 2px solid #ff9f43; 
+        border-radius: 10px; padding: 2rem; text-align: center; margin: 2rem auto;
+    }
+    .admin-box {
+        background: #f8f9fa; border: 1px solid #dee2e6;
+        border-radius: 8px; padding: 1rem; margin-top: 1rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# --- التحقق من الأسرار (Secrets) ---
-required_secrets = ["api_id", "api_hash", "session_string", "channel_id"]
-# ملاحظة: يمكنك إضافة admin_password و key إذا كنت تستخدم لوحة التحكم
-missing_secrets = [key for key in required_secrets if key not in st.secrets]
+# --- ⚙️ إعدادات النظام ---
+TIMEOUT_SECONDS = 180
+ITEMS_PER_PAGE = 5
 
-if missing_secrets:
-    st.error(f"⚠️ خطأ: البيانات التالية مفقودة في ملف secrets: {', '.join(missing_secrets)}")
-    st.info("تأكد من إضافتها في إعدادات Streamlit Cloud.")
+# التحقق من الأسرار
+required_secrets = ["api_id", "api_hash", "session_string", "channel_id", "admin_password", "key"]
+missing = [k for k in required_secrets if k not in st.secrets]
+if missing:
+    st.error(f"⚠️ البيانات التالية ناقصة في Secrets: {missing}")
     st.stop()
 
-# --- المتغيرات العامة (State) ---
-if 'search_results' not in st.session_state:
-    st.session_state.search_results = []
+# --- 🧠 الذاكرة المشتركة (State) ---
+@st.cache_resource
+class GlobalState:
+    def __init__(self):
+        self.locked = False
+        self.current_user_token = None
+        self.last_activity = 0
 
-# --- دوال الاتصال بتيليجرام ---
+state = GlobalState()
+
+# --- 🆔 تعريف المستخدم والجلسة ---
+if 'user_token' not in st.session_state:
+    st.session_state.user_token = str(uuid.uuid4())
+if 'is_admin' not in st.session_state:
+    st.session_state.is_admin = False
+if 'admin_mode' not in st.session_state:
+    st.session_state.admin_mode = False
+if 'duplicate_groups' not in st.session_state:
+    st.session_state.duplicate_groups = []
+if 'scan_completed' not in st.session_state:
+    st.session_state.scan_completed = False
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = 0
+
+def clear_session_data():
+    if 'search_results' in st.session_state:
+        st.session_state.search_results = []
+    gc.collect()
+
+# --- 🔐 منطق الحارس (Queue System) ---
+def check_access():
+    current_time = time.time()
+    
+    # المشرف له أولوية
+    if st.session_state.admin_mode:
+        return "ADMIN_PANEL"
+    
+    # تحرير القفل إذا انتهى الوقت
+    if state.locked and (current_time - state.last_activity > TIMEOUT_SECONDS):
+        state.locked = False
+        state.current_user_token = None
+        clear_session_data()
+    
+    if st.session_state.is_admin:
+        return "ADMIN_ACCESS"
+
+    # المستخدم الحالي النشط
+    if state.locked and state.current_user_token == st.session_state.user_token:
+        state.last_activity = current_time 
+        return "USER_ACCESS"
+    
+    # النظام متاح
+    if not state.locked:
+        return "READY_TO_ENTER"
+        
+    return False
+
+status = check_access()
+
+# --- دوال الاتصال والبحث ---
+api_id = int(st.secrets["api_id"])
+api_hash = st.secrets["api_hash"]
+session_string = st.secrets["session_string"]
+channel_id = int(st.secrets["channel_id"])
+
 async def get_client():
-    try:
-        api_id = int(st.secrets["api_id"])
-        api_hash = st.secrets["api_hash"]
-        session = st.secrets["session_string"]
-        client = TelegramClient(StringSession(session), api_id, api_hash)
-        await client.connect()
-        if not await client.is_user_authorized():
-            st.error("جلسة التيليجرام غير صالحة (Session String).")
-            return None
-        return client
-    except Exception as e:
-        st.error(f"خطأ في الاتصال: {e}")
-        return None
+    client = TelegramClient(StringSession(session_string), api_id, api_hash)
+    await client.start()
+    return client
 
 def search_books_async(query):
     results = []
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-
     async def _search():
         client = await get_client()
-        if not client: return
-        
         try:
-            channel_id = int(st.secrets["channel_id"])
             entity = await client.get_entity(channel_id)
-            # البحث عن آخر 20 نتيجة مطابقة لتسريع العملية
             async for message in client.iter_messages(entity, search=query, limit=20):
                 if message.file:
-                    file_name = message.file.name or message.text[:20] or 'ملف بدون اسم'
-                    if not file_name.endswith(('.pdf', '.epub', '.rar', '.zip')):
-                        file_name += ".pdf"
-                    
+                    file_name = message.file.name or message.text[:20] or 'كتاب'
                     results.append({
                         'id': message.id,
                         'file_name': file_name,
@@ -155,10 +191,9 @@ def search_books_async(query):
                         'caption': message.text or ""
                     })
         except Exception as e:
-            st.error(f"حدث خطأ أثناء البحث: {e}")
+            st.error(f"خطأ: {e}")
         finally:
             await client.disconnect()
-
     loop.run_until_complete(_search())
     loop.close()
     return results
@@ -167,104 +202,229 @@ def download_book_to_memory(message_id):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     buffer = io.BytesIO()
-    file_name = "downloaded_book"
+    file_name = "book.pdf"
     
-    status_text = st.empty()
+    # Progress Bar
     progress_bar = st.progress(0)
-
+    status_text = st.empty()
+    
     async def _download():
         nonlocal file_name
         client = await get_client()
-        if not client: return
-
         try:
-            channel_id = int(st.secrets["channel_id"])
             entity = await client.get_entity(channel_id)
             message = await client.get_messages(entity, ids=message_id)
-            
             if message and message.file:
                 file_name = message.file.name or "book.pdf"
-                status_text.text(f"جاري التحميل: {file_name}...")
-                
-                def callback(current, total):
-                    progress_bar.progress(current / total)
-                
-                await client.download_media(message, buffer, progress_callback=callback)
+                status_text.text(f"جاري التحميل: {file_name}")
+                await client.download_media(message, buffer, progress_callback=lambda c,t: progress_bar.progress(c/t))
                 buffer.seek(0)
-            else:
-                st.error("الملف غير موجود.")
         except Exception as e:
             st.error(f"فشل التحميل: {e}")
+            return None
         finally:
             await client.disconnect()
-
+            
     loop.run_until_complete(_download())
     loop.close()
-    status_text.empty()
     progress_bar.empty()
+    status_text.empty()
     return buffer, file_name
 
-# --- واجهة التطبيق ---
+# دوال إدارة المكررات (من الكود الأصلي)
+async def scan_for_duplicates():
+    client = await get_client()
+    files_by_size = defaultdict(list)
+    try:
+        entity = await client.get_entity(channel_id)
+        async for message in client.iter_messages(entity):
+            if message.file:
+                files_by_size[message.file.size].append({
+                    'id': message.id,
+                    'name': message.file.name or 'بدون اسم',
+                    'size': message.file.size,
+                    'date': message.date
+                })
+        return [files for size, files in files_by_size.items() if len(files) > 1]
+    finally:
+        await client.disconnect()
 
-# 1. العنوان
-st.markdown("""
-<div class="library-header">
-    <div class="library-title">المكتبة الرقمية</div>
-    <div class="library-subtitle">ابحث وحمل الكتب مباشرة</div>
-</div>
-""", unsafe_allow_html=True)
+async def delete_file(message_id):
+    client = await get_client()
+    try:
+        entity = await client.get_entity(channel_id)
+        await client.delete_messages(entity, message_id)
+        return True
+    except:
+        return False
+    finally:
+        await client.disconnect()
 
-# 2. مربع البحث
-col_search, col_btn = st.columns([4, 1])
-with col_search:
-    query = st.text_input("بحث", placeholder="اسم الكتاب أو المؤلف...", label_visibility="collapsed")
-with col_btn:
-    search_clicked = st.button("بحث 🔍", use_container_width=True, type="primary")
-
-# 3. منطق العرض
-if search_clicked and query:
-    with st.spinner("جاري البحث في القناة..."):
-        st.session_state.search_results = search_books_async(query)
-
-# 4. عرض النتائج
-if st.session_state.search_results:
-    st.success(f"تم العثور على {len(st.session_state.search_results)} نتيجة")
+# ==========================================
+# 🛑 السيناريو 1: لوحة التحكم (Admin Panel)
+# ==========================================
+if st.session_state.admin_mode:
+    st.markdown('<div class="library-header"><div class="library-title">⚙️ إدارة المكررات</div></div>', unsafe_allow_html=True)
     
-    for item in st.session_state.search_results:
-        # حساب الحجم بالميجابايت
-        size_mb = item['size'] / (1024 * 1024)
+    col_exit, col_scan = st.columns([1, 3])
+    with col_exit:
+        if st.button("🚪 خروج من الإدارة", use_container_width=True):
+            st.session_state.admin_mode = False
+            st.rerun()
+    
+    st.info("🔒 وضع المشرف نشط: النظام مغلق للمستخدمين الآخرين.")
+    
+    if not st.session_state.scan_completed:
+        if st.button("🔍 بدء فحص المكررات الآن", type="primary", use_container_width=True):
+            with st.spinner("جاري فحص القناة بالكامل..."):
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                dups = loop.run_until_complete(scan_for_duplicates())
+                loop.close()
+                st.session_state.duplicate_groups = dups
+                st.session_state.scan_completed = True
+                st.rerun()
+    else:
+        # عرض المكررات
+        groups = st.session_state.duplicate_groups
+        if not groups:
+            st.success("✅ القناة نظيفة! لا توجد ملفات مكررة.")
+            if st.button("إعادة الفحص"):
+                st.session_state.scan_completed = False
+                st.rerun()
+        else:
+            st.warning(f"وجدنا {len(groups)} مجموعة مكررة.")
+            
+            for i, group in enumerate(groups):
+                with st.expander(f"مجموعة #{i+1} - الحجم: {group[0]['size']/(1024*1024):.2f} MB"):
+                    for file in group:
+                        c1, c2 = st.columns([3, 1])
+                        with c1:
+                            st.write(f"📄 {file['name']} ({file['date'].strftime('%Y-%m-%d')})")
+                        with c2:
+                            if st.button("🗑️ حذف", key=f"del_{file['id']}"):
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                                if loop.run_until_complete(delete_file(file['id'])):
+                                    st.success("تم الحذف")
+                                    time.sleep(1)
+                                    st.rerun()
+                                loop.close()
+    st.stop()
+
+# ==========================================
+# 🛑 السيناريو 2: شاشة الانتظار (Locked)
+# ==========================================
+if status == False:
+    st.markdown('<div class="library-header"><div class="library-title">المكتبة الرقمية</div></div>', unsafe_allow_html=True)
+    
+    time_left = max(0, int(TIMEOUT_SECONDS - (time.time() - state.last_activity)))
+    
+    st.markdown(f"""
+    <div class="waiting-box">
+        <h3>⏳ النظام مشغول حالياً</h3>
+        <p>يوجد مستخدم آخر يقوم بالبحث والتحميل.</p>
+        <h1 style="color:#3498db">{time_left} ثانية</h1>
+        <p>سيفتح النظام تلقائياً عند انتهاء العداد.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🔄 تحديث الصفحة", use_container_width=True):
+        st.rerun()
         
+    with st.expander("🔐 دخول المشرف (للطوارئ)"):
+        key = st.text_input("مفتاح المشرف", type="password", key="key_wait")
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("إنهاء الجلسة الحالية"):
+                if key == st.secrets["key"]:
+                    state.locked = False
+                    state.current_user_token = None
+                    st.success("تم تحرير النظام!")
+                    st.rerun()
+        with c2:
+            if st.button("الدخول للإدارة"):
+                if key == st.secrets["key"]:
+                    st.session_state.admin_mode = True
+                    st.rerun()
+    st.stop()
+
+# ==========================================
+# 🛑 السيناريو 3: شاشة الترحيب (Welcome)
+# ==========================================
+elif status == "READY_TO_ENTER":
+    st.markdown('<div class="library-header"><div class="library-title">المكتبة الرقمية</div></div>', unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div style="text-align: center; padding: 2rem; background: white; border-radius: 10px;">
+        <h3>مرحباً بك 👋</h3>
+        <p>المكتبة متاحة الآن للاستخدام.</p>
+        <p style="color: grey; font-size: 0.9rem">مدة الجلسة الواحدة 3 دقائق لضمان عدم الضغط على النظام.</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if st.button("🚀 ابدأ الاستخدام الآن", type="primary", use_container_width=True):
+        state.locked = True
+        state.current_user_token = st.session_state.user_token
+        state.last_activity = time.time()
+        st.rerun()
+        
+    # أزرار المشرف المخفية
+    st.markdown("---")
+    with st.expander("إعدادات المشرف"):
+        key = st.text_input("مفتاح المشرف", type="password", key="key_welcome")
+        if st.button("دخول لوحة التحكم"):
+             if key == st.secrets["key"]:
+                st.session_state.admin_mode = True
+                st.rerun()
+    st.stop()
+
+# ==========================================
+# ✅ السيناريو 4: التطبيق الرئيسي (Active)
+# ==========================================
+
+# الهيدر والشارات
+st.markdown('<div class="library-header"><div class="library-title">المكتبة الرقمية</div></div>', unsafe_allow_html=True)
+
+# شريط المعلومات العلوي
+time_left_session = max(0, int(TIMEOUT_SECONDS - (time.time() - state.last_activity)))
+col_badge, col_logout = st.columns([2, 1])
+with col_badge:
+    st.markdown(f'<span class="badge badge-timer">⏱️ متبقي: {time_left_session} ثانية</span>', unsafe_allow_html=True)
+with col_logout:
+    if st.button("إنهاء الجلسة ❌", use_container_width=True):
+        state.locked = False
+        state.current_user_token = None
+        clear_session_data()
+        st.rerun()
+
+# مربع البحث
+st.markdown("<br>", unsafe_allow_html=True)
+query = st.text_input("بحث", placeholder="ابحث عن كتاب...", label_visibility="collapsed")
+if st.button("بحث 🔍", type="primary", use_container_width=True):
+    if query:
+        state.last_activity = time.time() # تجديد الوقت
+        with st.spinner("جاري البحث..."):
+            st.session_state.search_results = search_books_async(query)
+
+# عرض النتائج
+if 'search_results' in st.session_state and st.session_state.search_results:
+    for item in st.session_state.search_results:
         st.markdown(f"""
         <div class="book-item">
             <div class="book-main-title">{item['file_name']}</div>
-            <div class="book-details">
-                📅 {item['date'].strftime('%Y-%m-%d')} | 📦 {size_mb:.2f} MB
+            <div class="book-metadata">
+                📦 {item['size']/(1024*1024):.2f} MB | 📅 {item['date'].strftime('%Y-%m-%d')}
             </div>
-            <div style="color: #555; font-size: 0.9rem;">
-                {item['caption'][:150]}...
-            </div>
+            <div style="font-size: 0.9rem; color: #555;">{item['caption'][:100]}...</div>
         </div>
         """, unsafe_allow_html=True)
         
-        # أزرار التحميل
-        col_dl, col_preview = st.columns([1, 1])
-        with col_dl:
-             # زر التحميل يحتاج لمعالجة خاصة في ستريم ليت لتفادي إعادة التحميل الكاملة
-            if st.button(f"📥 تحضير التحميل", key=f"dl_{item['id']}", use_container_width=True):
+        # أزرار التحميل والمعاينة
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("📥 تحضير", key=f"dl_{item['id']}", use_container_width=True):
+                state.last_activity = time.time()
                 buff, fname = download_book_to_memory(item['id'])
                 if buff:
-                    st.download_button(
-                        label="اضغط هنا للحفظ 💾",
-                        data=buff,
-                        file_name=fname,
-                        mime="application/pdf",
-                        key=f"save_{item['id']}",
-                        use_container_width=True
-                    )
-
-elif search_clicked:
-    st.warning("لا توجد نتائج مطابقة.")
-
-# تذييل بسيط
-st.markdown("---")
-st.markdown("<div style='text-align: center; color: #888;'>مكتبة رقمية تعمل بواسطة Streamlit & Telegram</div>", unsafe_allow_html=True)
+                    st.download_button("حفظ 💾", buff, fname, mime="application/pdf", key=f"s_{item['id']}", use_container_width=True)
