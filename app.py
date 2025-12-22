@@ -203,18 +203,27 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(39, 174, 96, 0.3) !important;
     }
     
-    /* مدخلات النصوص */
+    /* مدخلات النصوص - تحسين التباين */
     .stTextInput>div>div>input {
-        border: 1px solid #ced4da !important;
-        border-radius: 2px !important;
-        padding: 0.7rem 1rem !important;
-        font-size: 1rem !important;
-        background: #fafafa !important;
+        border: 2px solid #7f8c8d !important;
+        border-radius: 4px !important;
+        padding: 0.9rem 1.2rem !important;
+        font-size: 1.2rem !important;
+        background: white !important;
+        color: #000000 !important;
+        font-weight: 500 !important;
+    }
+    
+    .stTextInput>div>div>input::placeholder {
+        color: #95a5a6 !important;
+        opacity: 0.7 !important;
     }
     
     .stTextInput>div>div>input:focus {
-        border-color: #7f8c8d !important;
+        border-color: #2c3e50 !important;
         background: white !important;
+        box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1) !important;
+        color: #000000 !important;
     }
     
     /* صندوق النتائج */
@@ -579,6 +588,22 @@ def get_first_page_preview(message_id):
         return None
 
 # دوال لوحة التحكم
+def clean_description(text):
+    """إزالة الروابط من النص"""
+    if not text:
+        return "لا يوجد وصف متاح لهذا الكتاب."
+    
+    # إزالة الروابط HTTP/HTTPS
+    text = re.sub(r'https?://\S+', '', text)
+    # إزالة الروابط www
+    text = re.sub(r'www\.\S+', '', text)
+    # إزالة الروابط t.me
+    text = re.sub(r't\.me/\S+', '', text)
+    # إزالة مسافات زائدة
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text if text else "لا يوجد وصف متاح لهذا الكتاب."
+
 async def scan_for_duplicates():
     client = await get_client()
     files_by_size = defaultdict(list)
@@ -887,12 +912,15 @@ if st.session_state.admin_mode:
                     
                     for file_idx, file in enumerate(group, 1):
                         with st.expander(f"📄 الملف {file_idx}: {file['name']}", expanded=False):
+                            # تنظيف الوصف من الروابط
+                            clean_caption = clean_description(file['caption'])
+                            
                             st.markdown(f"""
                             <div class="file-info">
                                 <p><strong>الاسم:</strong> {file['name']}</p>
                                 <p><strong>الحجم:</strong> {file['size'] / (1024*1024):.2f} ميجابايت</p>
                                 <p><strong>التاريخ:</strong> {file['date'].strftime('%Y-%m-%d %H:%M')}</p>
-                                <p><strong>الوصف:</strong> {file['caption'][:100] if file['caption'] else 'لا يوجد'}</p>
+                                <p><strong>الوصف:</strong> {clean_caption[:100] if len(clean_caption) > 100 else clean_caption}</p>
                             </div>
                             """, unsafe_allow_html=True)
                             
@@ -1160,8 +1188,9 @@ col_search, col_btn = st.columns([6, 1])
 with col_search:
     query = st.text_input(
         "بحث",
-        placeholder="أدخل عنوان الكتاب، اسم المؤلف، أو الموضوع...",
-        label_visibility="collapsed"
+        placeholder="ابحث عن كتاب، مؤلف، أو موضوع... (اكتب هنا)",
+        label_visibility="collapsed",
+        key="search_input"
     )
 
 with col_btn:
@@ -1189,7 +1218,7 @@ if st.session_state.search_results:
     """, unsafe_allow_html=True)
     
     for index, item in enumerate(st.session_state.search_results, 1):
-        caption_text = item['caption'].strip() if item['caption'] else "لا يوجد وصف متاح لهذا الكتاب."
+        caption_text = clean_description(item['caption'])
         
         st.markdown(f"""
         <div class="book-item">
