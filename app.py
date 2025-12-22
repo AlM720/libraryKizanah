@@ -7,11 +7,9 @@ import io
 import time
 import uuid
 import gc
-import re
 from PyPDF2 import PdfReader
 import fitz  # PyMuPDF
 from PIL import Image
-from collections import defaultdict
 
 # تفعيل تعدد المهام لبيئة Streamlit
 nest_asyncio.apply()
@@ -203,18 +201,27 @@ st.markdown("""
         box-shadow: 0 4px 8px rgba(39, 174, 96, 0.3) !important;
     }
     
-    /* مدخلات النصوص */
+    /* مدخلات النصوص - تحسين التباين */
     .stTextInput>div>div>input {
-        border: 1px solid #ced4da !important;
-        border-radius: 2px !important;
-        padding: 0.7rem 1rem !important;
-        font-size: 1rem !important;
-        background: #fafafa !important;
+        border: 2px solid #7f8c8d !important;
+        border-radius: 4px !important;
+        padding: 0.9rem 1.2rem !important;
+        font-size: 1.2rem !important;
+        background: white !important;
+        color: #000000 !important;
+        font-weight: 500 !important;
+    }
+    
+    .stTextInput>div>div>input::placeholder {
+        color: #95a5a6 !important;
+        opacity: 0.7 !important;
     }
     
     .stTextInput>div>div>input:focus {
-        border-color: #7f8c8d !important;
+        border-color: #2c3e50 !important;
         background: white !important;
+        box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1) !important;
+        color: #000000 !important;
     }
     
     /* صندوق النتائج */
@@ -337,59 +344,15 @@ st.markdown("""
         padding: 1.5rem;
         margin: 1.5rem 0;
     }
-    
-    /* لوحة التحكم */
-    .admin-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 10px;
-        margin-bottom: 2rem;
-        text-align: center;
-        color: white;
-    }
-    
-    .duplicate-card {
-        background: white;
-        border: 2px solid #e74c3c;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    
-    .file-info {
-        background: #f8f9fa;
-        padding: 1rem;
-        border-radius: 5px;
-        margin: 0.5rem 0;
-        border-left: 4px solid #3498db;
-    }
-    
-    .warning-box {
-        background: #fff3cd;
-        border: 2px solid #ffc107;
-        border-radius: 8px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-    }
-    
-    .success-box {
-        background: #d4edda;
-        border: 2px solid #28a745;
-        border-radius: 8px;
-        padding: 1rem;
-        margin: 1rem 0;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # --- ⚙️ إعدادات النظام ---
 TIMEOUT_SECONDS = 180
-ITEMS_PER_PAGE = 5
 
 required_secrets = ["api_id", "api_hash", "session_string", "channel_id", "admin_password", "key"]
 if not all(key in st.secrets for key in required_secrets):
-    st.error("⚠️ خطأ: تأكد من إعداد ملف secrets.toml بكامل البيانات.")
+    st.error("⚠️ خطأ: تأكد من إعداد ملف secrets.toml بكامل البيانات (بما في ذلك key).")
     st.stop()
 
 # --- 🧠 الذاكرة المشتركة ---
@@ -409,32 +372,19 @@ if 'user_token' not in st.session_state:
 if 'is_admin' not in st.session_state:
     st.session_state.is_admin = False
 
-if 'admin_mode' not in st.session_state:
-    st.session_state.admin_mode = False
-
-if 'duplicate_groups' not in st.session_state:
-    st.session_state.duplicate_groups = []
-
-if 'scan_completed' not in st.session_state:
-    st.session_state.scan_completed = False
-
-if 'current_page' not in st.session_state:
-    st.session_state.current_page = 0
-
 # --- دالة تنظيف الذاكرة ---
 def clear_session_data():
+    """تنظيف البيانات المؤقتة والذاكرة"""
     if 'search_results' in st.session_state:
         st.session_state.search_results = []
     if 'search_time' in st.session_state:
         st.session_state.search_time = None
+    # تنظيف الذاكرة
     gc.collect()
 
 # --- 🔐 منطق الحارس ---
 def check_access():
     current_time = time.time()
-    
-    if st.session_state.admin_mode:
-        return "ADMIN_PANEL"
     
     if state.locked and (current_time - state.last_activity > TIMEOUT_SECONDS):
         state.locked = False
@@ -454,6 +404,170 @@ def check_access():
     return False
 
 status = check_access()
+
+# ==========================================
+# 🛑 شاشة الانتظار
+# ==========================================
+if status == False:
+    st.markdown("""
+    <div class="library-header">
+        <div class="library-title">المكتبة الرقمية</div>
+        <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    time_passed = int(time.time() - state.last_activity)
+    time_left = TIMEOUT_SECONDS - time_passed
+    if time_left < 0: time_left = 0
+    
+    st.markdown("""
+    <div class="waiting-container">
+        <div class="waiting-title">⏸️ النظام مشغول حالياً</div>
+        <div class="waiting-text">
+            يستخدم أحد الباحثين النظام في الوقت الحالي.<br>
+            للحفاظ على استقرار الخدمة، يُسمح بدخول مستخدم واحد فقط في كل مرة.
+        </div>
+        <div class="timer-display">
+            {} ثانية
+        </div>
+        <div class="waiting-text" style="font-size: 0.95rem;">
+            سيتم إتاحة النظام تلقائياً عند انتهاء المدة المحددة
+        </div>
+    </div>
+    """.format(time_left), unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("تحديث الحالة", use_container_width=True):
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # صندوق إنهاء الجلسة للمشرف
+    with st.expander("🔐 لوحة تحكم المشرف"):
+        st.markdown('<div class="admin-control-box">', unsafe_allow_html=True)
+        st.markdown("**إنهاء الجلسة الحالية قسرياً**")
+        st.caption("استخدم هذا الخيار لإنهاء جلسة المستخدم الحالي فوراً")
+        
+        supervisor_key = st.text_input("مفتاح المشرف:", type="password", key="supervisor_key_waiting")
+        
+        col_btn1, col_btn2 = st.columns(2)
+        with col_btn1:
+            if st.button("إنهاء الجلسة الحالية", use_container_width=True, type="primary"):
+                if supervisor_key == st.secrets["key"]:
+                    state.locked = False
+                    state.current_user_token = None
+                    clear_session_data()
+                    st.success("✓ تم إنهاء الجلسة بنجاح")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("❌ مفتاح المشرف غير صحيح")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.markdown("---")
+    
+    with st.expander("دخول المسؤول"):
+        password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_locked")
+        if st.button("دخول"):
+            if password_attempt == st.secrets["admin_password"]:
+                st.session_state.is_admin = True
+                st.success("✓ تم التحقق من الهوية")
+                time.sleep(0.5)
+                st.rerun()
+            else:
+                st.error("كلمة المرور غير صحيحة")
+    
+    st.stop()
+
+# ==========================================
+# 👋 شاشة الترحيب
+# ==========================================
+elif status == "READY_TO_ENTER":
+    st.markdown("""
+    <div class="library-header">
+        <div class="library-title">المكتبة الرقمية</div>
+        <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    <div class="welcome-box">
+        <div class="welcome-title">مرحباً بك في المكتبة</div>
+        <div class="welcome-description">
+            يوفر لك هذا النظام إمكانية البحث في آلاف الكتب والمراجع العلمية والأدبية
+            من مختلف المجالات المعرفية. استخدم محرك البحث للعثور على الكتاب المطلوب
+            وتحميله مباشرة إلى جهازك.
+        </div>
+        <div style="margin-bottom: 2rem;">
+            <span class="badge" style="background: #27ae60; color: white; border-color: #229954;">
+                <span class="status-indicator" style="width: 8px; height: 8px; margin-left: 0.3rem;"></span>
+                النظام متاح الآن
+            </span>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col2:
+        if st.button("بدء استخدام المكتبة", use_container_width=True, type="primary"):
+            state.locked = True
+            state.current_user_token = st.session_state.user_token
+            state.last_activity = time.time()
+            st.rerun()
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    with st.expander("دخول المسؤول"):
+        password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_open")
+        if st.button("دخول"):
+            if password_attempt == st.secrets["admin_password"]:
+                st.session_state.is_admin = True
+                st.rerun()
+    
+    st.stop()
+
+# ==========================================
+# ✅ التطبيق الرئيسي
+# ==========================================
+
+# الهيدر الرئيسي
+st.markdown("""
+<div class="library-header">
+    <div class="library-title">المكتبة الرقمية</div>
+    <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
+</div>
+""", unsafe_allow_html=True)
+
+# شريط المعلومات العلوي
+if st.session_state.is_admin:
+    status_badge = '<span class="badge badge-admin">مسؤول النظام</span>'
+else:
+    time_left_session = TIMEOUT_SECONDS - int(time.time() - state.last_activity)
+    status_badge = f'<span class="badge">الوقت المتبقي: {time_left_session} ثانية</span>'
+
+col_info1, col_info2, col_info3 = st.columns([2, 6, 2])
+
+with col_info1:
+    st.markdown(f'<div style="padding: 0.5rem;">{status_badge}</div>', unsafe_allow_html=True)
+
+with col_info3:
+    if st.button("إنهاء الجلسة", use_container_width=True):
+        if st.session_state.is_admin:
+            st.session_state.is_admin = False
+        else:
+            state.locked = False
+            state.current_user_token = None
+        clear_session_data()  # تنظيف البيانات عند الخروج
+        st.rerun()
+
+st.markdown("<br>", unsafe_allow_html=True)
+
+# تحذير للمدير
+if status == "ADMIN_ACCESS" and state.locked and state.current_user_token != st.session_state.user_token:
+    st.warning("⚠️ تنبيه: يوجد مستخدم نشط آخر. الاستخدام المتزامن قد يسبب مشاكل في النظام.")
+    st.markdown("<br>", unsafe_allow_html=True)
 
 # --- دوال الاتصال ---
 api_id = int(st.secrets["api_id"])
@@ -488,7 +602,7 @@ def search_books_async(query):
                         'caption': message.text or ""
                     })
         except Exception as e:
-            st.error(f"خطأ في الاتصال: {e}")
+            st.error(f"خطأ في الاتصال بقاعدة البيانات: {e}")
         finally:
             await client.disconnect()
 
@@ -535,6 +649,7 @@ def download_book_to_memory(message_id):
     return buffer, file_name
 
 def get_pdf_page_count(message_id):
+    """حساب عدد صفحات الكتاب PDF"""
     try:
         buffer, file_name = download_book_to_memory(message_id)
         if buffer and file_name.lower().endswith('.pdf'):
@@ -550,16 +665,24 @@ def get_pdf_page_count(message_id):
         return None
 
 def get_first_page_preview(message_id):
+    """استخراج أول صفحة من PDF كصورة"""
     try:
         buffer, file_name = download_book_to_memory(message_id)
         if buffer and file_name.lower().endswith('.pdf'):
+            # فتح PDF باستخدام PyMuPDF
             pdf_document = fitz.open(stream=buffer.read(), filetype="pdf")
             
+            # الحصول على الصفحة الأولى
             if len(pdf_document) > 0:
                 first_page = pdf_document[0]
+                
+                # تحويل الصفحة إلى صورة
+                # zoom للحصول على جودة أفضل (2 = دقة عالية)
                 zoom = 2
                 mat = fitz.Matrix(zoom, zoom)
                 pix = first_page.get_pixmap(matrix=mat)
+                
+                # تحويل إلى PIL Image
                 img_data = pix.tobytes("png")
                 img = Image.open(io.BytesIO(img_data))
                 
@@ -578,580 +701,13 @@ def get_first_page_preview(message_id):
         st.error(f"خطأ في إنشاء المعاينة: {e}")
         return None
 
-# دوال لوحة التحكم
-async def scan_for_duplicates():
-    client = await get_client()
-    files_by_size = defaultdict(list)
-    
-    try:
-        entity = await client.get_entity(channel_id)
-        
-        async for message in client.iter_messages(entity):
-            if message.file:
-                file_info = {
-                    'id': message.id,
-                    'name': message.file.name or 'بدون اسم',
-                    'size': message.file.size,
-                    'date': message.date,
-                    'caption': message.text or ''
-                }
-                files_by_size[message.file.size].append(file_info)
-        
-        potential_duplicates = []
-        for size, files in files_by_size.items():
-            if len(files) > 1:
-                potential_duplicates.append(files)
-        
-        return potential_duplicates
-        
-    except Exception as e:
-        st.error(f"خطأ في المسح: {e}")
-        return []
-    finally:
-        await client.disconnect()
-
-def has_sequential_numbers(name1, name2):
-    """التحقق من وجود أرقام متسلسلة في الأسماء"""
-    numbers1 = re.findall(r'\d+', name1)
-    numbers2 = re.findall(r'\d+', name2)
-    
-    if numbers1 and numbers2:
-        for n1 in numbers1:
-            for n2 in numbers2:
-                if abs(int(n1) - int(n2)) == 1:
-                    return True
-    
-    patterns = [
-        r'(جزء|الجزء|part|vol|volume)\s*\d+',
-        r'\d+\s*(جزء|الجزء|part|vol|volume)',
-    ]
-    
-    for pattern in patterns:
-        if re.search(pattern, name1, re.IGNORECASE) and re.search(pattern, name2, re.IGNORECASE):
-            return True
-    
-    return False
-
-def are_names_similar(name1, name2):
-    """مقارنة الأسماء لمعرفة التشابه"""
-    name1_clean = re.sub(r'\.(pdf|epub|rar|zip)$', '', name1.lower())
-    name2_clean = re.sub(r'\.(pdf|epub|rar|zip)$', '', name2.lower())
-    
-    name1_no_nums = re.sub(r'\d+', '', name1_clean)
-    name2_no_nums = re.sub(r'\d+', '', name2_clean)
-    
-    name1_no_nums = re.sub(r'[^\w\s]', '', name1_no_nums).strip()
-    name2_no_nums = re.sub(r'[^\w\s]', '', name2_no_nums).strip()
-    
-    if name1_no_nums == name2_no_nums and name1_no_nums:
-        return True
-    
-    words1 = set(name1_no_nums.split())
-    words2 = set(name2_no_nums.split())
-    
-    if words1 and words2:
-        common_words = words1.intersection(words2)
-        similarity = len(common_words) / max(len(words1), len(words2))
-        return similarity >= 0.7
-    
-    return False
-
-def classify_duplicate_group(group):
-    """تصنيف المجموعة المكررة: تلقائي أم يحتاج تأكيد"""
-    if len(group) < 2:
-        return "single", []
-    
-    names = [f['name'] for f in group]
-    
-    for i in range(len(names)):
-        for j in range(i + 1, len(names)):
-            if has_sequential_numbers(names[i], names[j]):
-                return "manual", group
-    
-    all_similar = True
-    for i in range(len(names) - 1):
-        if not are_names_similar(names[i], names[i + 1]):
-            all_similar = False
-            break
-    
-    if all_similar:
-        sorted_group = sorted(group, key=lambda x: x['date'], reverse=True)
-        keep_file = sorted_group[0]
-        delete_files = sorted_group[1:]
-        return "auto", delete_files
-    
-    return "manual", group
-
-async def auto_delete_duplicates(files_to_delete):
-    """حذف الملفات المكررة تلقائياً"""
-    deleted_count = 0
-    failed_count = 0
-    
-    for file in files_to_delete:
-        success = await delete_file(file['id'])
-        if success:
-            deleted_count += 1
-        else:
-            failed_count += 1
-    
-    return deleted_count, failed_count
-
-async def delete_file(message_id):
-    client = await get_client()
-    try:
-        entity = await client.get_entity(channel_id)
-        await client.delete_messages(entity, message_id)
-        return True
-    except Exception as e:
-        st.error(f"خطأ في الحذف: {e}")
-        return False
-    finally:
-        await client.disconnect()
-
-# ==========================================
-# لوحة التحكم
-# ==========================================
-if st.session_state.admin_mode:
-    st.markdown("""
-    <div class="admin-header">
-        <div style="font-size: 2.5rem; font-weight: 700;">🗂️ إدارة الملفات المكررة</div>
-        <p style="font-size: 1.1rem; margin-top: 0.5rem;">نظام الكشف والحذف الذكي</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col_info1, col_info2 = st.columns([3, 1])
-    
-    with col_info1:
-        st.info("🔒 **الجلسات الأخرى متوقفة** - أنت الوحيد المسموح له بالدخول حالياً")
-    
-    with col_info2:
-        if st.button("🚪 خروج", use_container_width=True):
-            st.session_state.admin_mode = False
-            st.session_state.duplicate_groups = []
-            st.session_state.scan_completed = False
-            st.session_state.current_page = 0
-            st.rerun()
-    
-    st.markdown("---")
-    
-    if not st.session_state.scan_completed:
-        col1, col2, col3 = st.columns([1, 2, 1])
-        
-        with col2:
-            st.markdown("""
-            <div class="warning-box" style="text-align: center;">
-                <h3 style="color: #856404;">🔍 ابدأ عملية المسح</h3>
-                <p>سيتم فحص جميع الملفات في القناة للبحث عن المكررات</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if st.button("🔍 بدء المسح الآن", use_container_width=True, type="primary"):
-                with st.spinner("⏳ جاري مسح القناة..."):
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    duplicates = loop.run_until_complete(scan_for_duplicates())
-                    loop.close()
-                    
-                    st.session_state.duplicate_groups = duplicates
-                    st.session_state.scan_completed = True
-                    st.session_state.current_page = 0
-                    st.rerun()
-    else:
-        if len(st.session_state.duplicate_groups) == 0:
-            st.markdown("""
-            <div class="success-box" style="text-align: center;">
-                <h2 style="color: #155724;">✅ رائع!</h2>
-                <p style="font-size: 1.2rem;">لا توجد ملفات مكررة في القناة</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if st.button("🔄 إعادة المسح", use_container_width=True):
-                st.session_state.scan_completed = False
-                st.session_state.duplicate_groups = []
-                st.session_state.current_page = 0
-                st.rerun()
-        else:
-            # تصنيف المجموعات
-            auto_delete_groups = []
-            manual_groups = []
-            
-            for group in st.session_state.duplicate_groups:
-                classification, data = classify_duplicate_group(group)
-                if classification == "auto":
-                    auto_delete_groups.append(data)
-                elif classification == "manual":
-                    manual_groups.append(group)
-            
-            total_auto_files = sum(len(g) for g in auto_delete_groups)
-            
-            st.success(f"✓ تم العثور على **{len(st.session_state.duplicate_groups)}** مجموعة من الملفات المكررة")
-            
-            col_stat1, col_stat2 = st.columns(2)
-            with col_stat1:
-                st.info(f"🤖 **{total_auto_files}** ملف يمكن حذفه تلقائياً")
-            with col_stat2:
-                st.warning(f"👤 **{len(manual_groups)}** مجموعة تحتاج مراجعة يدوية")
-            
-            if auto_delete_groups:
-                st.markdown("---")
-                st.markdown("### 🤖 الحذف التلقائي الذكي")
-                st.write("تم اكتشاف ملفات مكررة بنفس الاسم والحجم (بدون أرقام متسلسلة). يمكن حذفها تلقائياً وإبقاء أحدث نسخة.")
-                
-                col_auto1, col_auto2, col_auto3 = st.columns([1, 1, 1])
-                with col_auto2:
-                    if st.button(f"🗑️ حذف {total_auto_files} ملف تلقائياً", use_container_width=True, type="primary"):
-                        with st.spinner("جاري الحذف التلقائي..."):
-                            loop = asyncio.new_event_loop()
-                            asyncio.set_event_loop(loop)
-                            
-                            all_files_to_delete = [f for group in auto_delete_groups for f in group]
-                            deleted, failed = loop.run_until_complete(auto_delete_duplicates(all_files_to_delete))
-                            
-                            loop.close()
-                            
-                            if deleted > 0:
-                                st.success(f"✓ تم حذف {deleted} ملف بنجاح!")
-                                if failed > 0:
-                                    st.warning(f"⚠️ فشل حذف {failed} ملف")
-                                
-                                st.session_state.duplicate_groups = manual_groups
-                                st.session_state.current_page = 0
-                                time.sleep(2)
-                                st.rerun()
-            
-            if not manual_groups:
-                st.markdown("---")
-                st.markdown("""
-                <div class="success-box" style="text-align: center;">
-                    <h2 style="color: #155724;">✅ انتهى!</h2>
-                    <p style="font-size: 1.2rem;">لا توجد ملفات مكررة تحتاج مراجعة</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if st.button("🔄 إعادة المسح", use_container_width=True):
-                    st.session_state.scan_completed = False
-                    st.session_state.duplicate_groups = []
-                    st.session_state.current_page = 0
-                    st.rerun()
-            else:
-                st.markdown("---")
-                st.markdown("### 👤 المجموعات التي تحتاج مراجعة يدوية")
-                st.caption("هذه المجموعات تحتوي على أرقام متسلسلة (قد تكون أجزاء مختلفة)")
-                
-                if st.button("🔄 إعادة المسح", use_container_width=True):
-                    st.session_state.scan_completed = False
-                    st.session_state.duplicate_groups = []
-                    st.session_state.current_page = 0
-                    st.rerun()
-                
-                st.markdown("---")
-                
-                total_groups = len(manual_groups)
-                if total_groups == 0:
-                    st.stop()
-                    
-                total_pages = (total_groups + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
-                current_page = st.session_state.current_page
-                
-                start_idx = current_page * ITEMS_PER_PAGE
-                end_idx = min(start_idx + ITEMS_PER_PAGE, total_groups)
-                
-                st.info(f"📄 الصفحة {current_page + 1} من {total_pages} | عرض المجموعات {start_idx + 1} - {end_idx} من {total_groups}")
-                
-                col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
-                
-                with col_nav1:
-                    if current_page > 0:
-                        if st.button("⏮️ السابق", use_container_width=True):
-                            st.session_state.current_page -= 1
-                            st.rerun()
-                
-                with col_nav3:
-                    if current_page < total_pages - 1:
-                        if st.button("التالي ⏭️", use_container_width=True, type="primary"):
-                            st.session_state.current_page += 1
-                            st.rerun()
-                
-                st.markdown("---")
-                
-                current_groups = manual_groups[start_idx:end_idx]
-                
-                for idx, group in enumerate(current_groups, start=start_idx + 1):
-                    st.markdown(f"""
-                    <div class="duplicate-card">
-                        <h3 style="color: #c0392b;">🔴 مجموعة مكررة #{idx}</h3>
-                        <p><strong>الحجم المشترك:</strong> {group[0]['size'] / (1024*1024):.2f} ميجابايت</p>
-                        <p><strong>عدد الملفات:</strong> {len(group)} ملف</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    for file_idx, file in enumerate(group, 1):
-                        with st.expander(f"📄 الملف {file_idx}: {file['name']}", expanded=False):
-                            st.markdown(f"""
-                            <div class="file-info">
-                                <p><strong>الاسم:</strong> {file['name']}</p>
-                                <p><strong>الحجم:</strong> {file['size'] / (1024*1024):.2f} ميجابايت</p>
-                                <p><strong>التاريخ:</strong> {file['date'].strftime('%Y-%m-%d %H:%M')}</p>
-                                <p><strong>الوصف:</strong> {file['caption'][:100] if file['caption'] else 'لا يوجد'}</p>
-                            </div>
-                            """, unsafe_allow_html=True)
-                            
-                            col1, col2 = st.columns(2)
-                            
-                            with col1:
-                                if st.button(f"📊 فحص عدد الصفحات", key=f"check_pages_{file['id']}"):
-                                    with st.spinner("جاري الفحص..."):
-                                        pages = get_pdf_page_count(file['id'])
-                                        
-                                        if pages:
-                                            st.success(f"📖 عدد الصفحات: {pages}")
-                                        else:
-                                            st.warning("لم نتمكن من حساب عدد الصفحات")
-                            
-                            with col2:
-                                delete_key = f"delete_{file['id']}"
-                                if st.button(f"🗑️ حذف هذا الملف", key=delete_key, type="primary"):
-                                    st.warning("⚠️ تأكيد الحذف")
-                                    confirm_key = f"confirm_{file['id']}"
-                                    if st.button(f"✓ نعم، احذف نهائياً", key=confirm_key):
-                                        with st.spinner("جاري الحذف..."):
-                                            loop = asyncio.new_event_loop()
-                                            asyncio.set_event_loop(loop)
-                                            success = loop.run_until_complete(delete_file(file['id']))
-                                            loop.close()
-                                            
-                                            if success:
-                                                st.success("✓ تم الحذف بنجاح!")
-                                                
-                                                for i, g in enumerate(manual_groups):
-                                                    for j, f in enumerate(g):
-                                                        if f['id'] == file['id']:
-                                                            del manual_groups[i][j]
-                                                            
-                                                            if len(manual_groups[i]) <= 1:
-                                                                del manual_groups[i]
-                                                            
-                                                            break
-                                                
-                                                if len(manual_groups) == 0:
-                                                    st.session_state.current_page = 0
-                                                elif st.session_state.current_page * ITEMS_PER_PAGE >= len(manual_groups):
-                                                    st.session_state.current_page = max(0, st.session_state.current_page - 1)
-                                                
-                                                time.sleep(1)
-                                                st.rerun()
-                                            else:
-                                                st.error("فشل الحذف")
-                    
-                    st.markdown("<br>", unsafe_allow_html=True)
-                
-                st.markdown("---")
-                col_nav4, col_nav5, col_nav6 = st.columns([1, 2, 1])
-                
-                with col_nav4:
-                    if current_page > 0:
-                        if st.button("⏮️ السابق", use_container_width=True, key="prev_bottom"):
-                            st.session_state.current_page -= 1
-                            st.rerun()
-                
-                with col_nav6:
-                    if current_page < total_pages - 1:
-                        if st.button("التالي ⏭️", use_container_width=True, type="primary", key="next_bottom"):
-                            st.session_state.current_page += 1
-                            st.rerun()
-    
-    st.stop()
-
-# ==========================================
-# 🛑 شاشة الانتظار
-# ==========================================
-if status == False:
-    st.markdown("""
-    <div class="library-header">
-        <div class="library-title">المكتبة الرقمية</div>
-        <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    time_passed = int(time.time() - state.last_activity)
-    time_left = TIMEOUT_SECONDS - time_passed
-    if time_left < 0: time_left = 0
-    
-    st.markdown(f"""
-    <div class="waiting-container">
-        <div class="waiting-title">⏸️ النظام مشغول حالياً</div>
-        <div class="waiting-text">
-            يستخدم أحد الباحثين النظام في الوقت الحالي.<br>
-            للحفاظ على استقرار الخدمة، يُسمح بدخول مستخدم واحد فقط في كل مرة.
-        </div>
-        <div class="timer-display">{time_left} ثانية</div>
-        <div class="waiting-text" style="font-size: 0.95rem;">
-            سيتم إتاحة النظام تلقائياً عند انتهاء المدة المحددة
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        if st.button("تحديث الحالة", use_container_width=True):
-            st.rerun()
-    
-    st.markdown("---")
-    
-    with st.expander("🔐 لوحة تحكم المشرف"):
-        st.markdown('<div class="admin-control-box">', unsafe_allow_html=True)
-        st.markdown("**إنهاء الجلسة الحالية أو الدخول للوحة التحكم**")
-        
-        supervisor_key = st.text_input("مفتاح المشرف:", type="password", key="supervisor_key_waiting")
-        
-        col_btn1, col_btn2 = st.columns(2)
-        with col_btn1:
-            if st.button("إنهاء الجلسة الحالية", use_container_width=True):
-                if supervisor_key == st.secrets["key"]:
-                    state.locked = False
-                    state.current_user_token = None
-                    clear_session_data()
-                    st.success("✓ تم إنهاء الجلسة بنجاح")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("❌ مفتاح المشرف غير صحيح")
-        
-        with col_btn2:
-            if st.button("لوحة إدارة المكررات", use_container_width=True, type="primary"):
-                if supervisor_key == st.secrets["key"]:
-                    st.session_state.admin_mode = True
-                    state.locked = False
-                    state.current_user_token = None
-                    clear_session_data()
-                    st.rerun()
-                else:
-                    st.error("❌ مفتاح المشرف غير صحيح")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown("---")
-    
-    with st.expander("دخول المسؤول"):
-        password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_locked")
-        if st.button("دخول"):
-            if password_attempt == st.secrets["admin_password"]:
-                st.session_state.is_admin = True
-                st.success("✓ تم التحقق من الهوية")
-                time.sleep(0.5)
-                st.rerun()
-            else:
-                st.error("كلمة المرور غير صحيحة")
-    
-    st.stop()
-
-# ==========================================
-# 👋 شاشة الترحيب
-# ==========================================
-elif status == "READY_TO_ENTER":
-    st.markdown("""
-    <div class="library-header">
-        <div class="library-title">المكتبة الرقمية</div>
-        <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <div class="welcome-box">
-        <div class="welcome-title">مرحباً بك في المكتبة</div>
-        <div class="welcome-description">
-            يوفر لك هذا النظام إمكانية البحث في آلاف الكتب والمراجع العلمية والأدبية
-            من مختلف المجالات المعرفية. استخدم محرك البحث للعثور على الكتاب المطلوب
-            وتحميله مباشرة إلى جهازك.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        if st.button("بدء استخدام المكتبة", use_container_width=True, type="primary"):
-            state.locked = True
-            state.current_user_token = st.session_state.user_token
-            state.last_activity = time.time()
-            st.rerun()
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    with st.expander("🔐 لوحة تحكم المشرف"):
-        st.markdown('<div class="admin-control-box">', unsafe_allow_html=True)
-        st.markdown("**الدخول للوحة إدارة المكررات**")
-        
-        supervisor_key = st.text_input("مفتاح المشرف:", type="password", key="supervisor_key_welcome")
-        
-        if st.button("دخول لوحة التحكم", use_container_width=True, type="primary"):
-            if supervisor_key == st.secrets["key"]:
-                st.session_state.admin_mode = True
-                st.rerun()
-            else:
-                st.error("❌ مفتاح المشرف غير صحيح")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-    
-    st.markdown("<br>", unsafe_allow_html=True)
-    
-    with st.expander("دخول المسؤول"):
-        password_attempt = st.text_input("كلمة المرور:", type="password", key="admin_pass_open")
-        if st.button("دخول"):
-            if password_attempt == st.secrets["admin_password"]:
-                st.session_state.is_admin = True
-                st.rerun()
-    
-    st.stop()
-
-# ==========================================
-# ✅ التطبيق الرئيسي
-# ==========================================
-
-st.markdown("""
-<div class="library-header">
-    <div class="library-title">المكتبة الرقمية</div>
-    <div class="library-subtitle">نظام البحث في الكتب والمراجع</div>
-</div>
-""", unsafe_allow_html=True)
-
-if st.session_state.is_admin:
-    status_badge = '<span class="badge badge-admin">مسؤول النظام</span>'
-else:
-    time_left_session = TIMEOUT_SECONDS - int(time.time() - state.last_activity)
-    status_badge = f'<span class="badge">الوقت المتبقي: {time_left_session} ثانية</span>'
-
-col_info1, col_info2, col_info3 = st.columns([2, 4, 2])
-
-with col_info1:
-    st.markdown(f'<div style="padding: 0.5rem;">{status_badge}</div>', unsafe_allow_html=True)
-
-with col_info2:
-    if st.session_state.is_admin:
-        if st.button("🗂️ لوحة إدارة المكررات", use_container_width=True):
-            st.session_state.admin_mode = True
-            st.rerun()
-
-with col_info3:
-    if st.button("إنهاء الجلسة", use_container_width=True):
-        if st.session_state.is_admin:
-            st.session_state.is_admin = False
-        else:
-            state.locked = False
-            state.current_user_token = None
-        clear_session_data()
-        st.rerun()
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-if status == "ADMIN_ACCESS" and state.locked and state.current_user_token != st.session_state.user_token:
-    st.warning("⚠️ تنبيه: يوجد مستخدم نشط آخر. الاستخدام المتزامن قد يسبب مشاكل في النظام.")
-    st.markdown("<br>", unsafe_allow_html=True)
-
+# --- واجهة البحث ---
 if 'search_results' not in st.session_state:
     st.session_state.search_results = []
 if 'search_time' not in st.session_state:
     st.session_state.search_time = None
 
+# صندوق البحث
 st.markdown('<div class="search-container">', unsafe_allow_html=True)
 st.markdown('<span class="search-label">البحث في فهرس المكتبة</span>', unsafe_allow_html=True)
 
@@ -1160,8 +716,9 @@ col_search, col_btn = st.columns([6, 1])
 with col_search:
     query = st.text_input(
         "بحث",
-        placeholder="أدخل عنوان الكتاب، اسم المؤلف، أو الموضوع...",
-        label_visibility="collapsed"
+        placeholder="ابحث عن كتاب، مؤلف، أو موضوع... (اكتب هنا)",
+        label_visibility="collapsed",
+        key="search_input"
     )
 
 with col_btn:
@@ -1177,6 +734,7 @@ if search_button and query:
         st.session_state.search_results = search_books_async(query)
         st.session_state.search_time = round(time.time() - start_time, 2)
 
+# عرض النتائج
 if st.session_state.search_results:
     st.markdown(f"""
     <div class="results-header">
@@ -1189,6 +747,7 @@ if st.session_state.search_results:
     """, unsafe_allow_html=True)
     
     for index, item in enumerate(st.session_state.search_results, 1):
+        # تجهيز الوصف
         caption_text = item['caption'].strip() if item['caption'] else "لا يوجد وصف متاح لهذا الكتاب."
         
         st.markdown(f"""
@@ -1204,13 +763,16 @@ if st.session_state.search_results:
         
         st.markdown('<div class="action-buttons-area">', unsafe_allow_html=True)
         
+        # الأزرار
         col1, col2, col3 = st.columns(3)
         
+        # زر عدد الصفحات
         with col1:
             pages_btn_key = f"pages_{item['id']}"
             if st.button("عدد الصفحات", key=pages_btn_key, use_container_width=True):
                 state.last_activity = time.time()
                 
+                # التحقق من نوع الملف
                 if item['file_name'].lower().endswith('.pdf'):
                     with st.spinner("جاري حساب عدد الصفحات..."):
                         page_count = get_pdf_page_count(item['id'])
@@ -1221,11 +783,13 @@ if st.session_state.search_results:
                 else:
                     st.info("هذه الميزة متاحة فقط لملفات PDF")
         
+        # زر المعاينة
         with col2:
             preview_btn_key = f"preview_{item['id']}"
             if st.button("معاينة الكتاب", key=preview_btn_key, use_container_width=True):
                 state.last_activity = time.time()
                 
+                # التحقق من نوع الملف
                 if item['file_name'].lower().endswith('.pdf'):
                     with st.spinner("جاري تحضير المعاينة..."):
                         first_page = get_first_page_preview(item['id'])
@@ -1236,6 +800,7 @@ if st.session_state.search_results:
                 else:
                     st.info("المعاينة متاحة فقط لملفات PDF")
         
+        # زر التحميل
         with col3:
             btn_key = f"btn_{item['id']}"
             if st.button("تحميل الآن", key=btn_key, use_container_width=True, type="primary"):
