@@ -423,10 +423,6 @@ st.markdown("""
         box-shadow: 0 5px 20px rgba(139, 69, 19, 0.2);
     }
 </style>
-""", unsafe_allow_html=True)padding: 1rem;
-        margin: 1rem 0;
-    }
-</style>
 """, unsafe_allow_html=True)
 
 # --- ⚙️ إعدادات النظام ---
