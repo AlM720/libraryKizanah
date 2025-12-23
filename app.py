@@ -24,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- تصميم CSS احترافي يشبه المكتبات الأكاديمية ---
+# --- تصميم CSS احترافي مع خلفية الكتب القديمة ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@300;400;500;700&display=swap');
@@ -41,352 +41,389 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
     
+    /* خلفية الكتب القديمة */
     .stApp {
-        background-color: #f8f9fa;
+        background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxkZWZzPjxwYXR0ZXJuIGlkPSJwYXR0ZXJuIiB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNmNWYxZTgiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjcGF0dGVybikiLz48L3N2Zz4=');
+        background-color: #f5f1e8;
+        background-blend-mode: multiply;
     }
     
-    /* الهيدر الأكاديمي */
+    /* تأثير الورق القديم */
+    .stApp::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: 
+            linear-gradient(to bottom, rgba(139, 69, 19, 0.05) 0%, transparent 10%),
+            radial-gradient(ellipse at center, transparent 0%, rgba(139, 69, 19, 0.03) 100%);
+        pointer-events: none;
+        z-index: 0;
+    }
+    
+    /* الهيدر بتصميم الكتب */
     .library-header {
-        background: linear-gradient(to bottom, #2c3e50 0%, #34495e 100%);
-        padding: 1.5rem 0;
+        background: linear-gradient(135deg, rgba(139, 69, 19, 0.9) 0%, rgba(101, 67, 33, 0.9) 100%);
+        padding: 2rem 0;
         margin-bottom: 2rem;
-        border-bottom: 3px solid #95a5a6;
+        border-bottom: 3px solid #8b4513;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .library-header::before {
+        content: '📚';
+        position: absolute;
+        font-size: 15rem;
+        opacity: 0.1;
+        right: -3rem;
+        top: -5rem;
+        transform: rotate(-15deg);
     }
     
     .library-title {
-        color: #ecf0f1;
-        font-size: 2.5rem;
+        color: #f5f1e8;
+        font-size: 3rem;
         font-weight: 700;
         text-align: center;
         margin: 0;
-        letter-spacing: 1px;
+        letter-spacing: 2px;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        font-family: 'Amiri', serif;
     }
     
     .library-subtitle {
-        color: #bdc3c7;
+        color: #d4c5a9;
         text-align: center;
-        font-size: 1rem;
+        font-size: 1.1rem;
         margin-top: 0.5rem;
         font-weight: 300;
     }
     
-    /* شريط المعلومات */
-    .info-bar {
-        background: white;
-        border: 1px solid #dee2e6;
-        border-radius: 4px;
-        padding: 0.8rem 1.5rem;
-        margin-bottom: 1.5rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    
-    /* صندوق البحث الأكاديمي */
+    /* صندوق البحث بتصميم الكتب */
     .search-container {
-        background: white;
-        border: 2px solid #dee2e6;
-        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.95);
+        border: 3px solid #8b4513;
+        border-radius: 8px;
         padding: 2rem;
         margin-bottom: 2rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+        box-shadow: 0 4px 15px rgba(139, 69, 19, 0.2);
+        position: relative;
+    }
+    
+    .search-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg"><rect fill="%23f5f1e8" width="100%" height="100%"/></svg>');
+        opacity: 0.3;
+        pointer-events: none;
     }
     
     .search-label {
-        color: #2c3e50;
-        font-size: 1.1rem;
-        font-weight: 500;
+        color: #5a3a1a;
+        font-size: 1.2rem;
+        font-weight: 600;
         margin-bottom: 1rem;
         display: block;
+        font-family: 'Amiri', serif;
     }
     
-    /* بطاقة الكتاب - تصميم أرشيفي */
+    /* بطاقة الكتاب بتصميم ورقي */
     .book-item {
-        background: white;
-        border: 1px solid #e0e0e0;
-        border-right: 4px solid #7f8c8d;
+        background: rgba(255, 255, 255, 0.98);
+        border: 2px solid #c19a6b;
+        border-right: 5px solid #8b4513;
         padding: 1.5rem;
         margin-bottom: 1rem;
-        transition: all 0.2s ease;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(139, 69, 19, 0.15);
+        position: relative;
+    }
+    
+    .book-item::before {
+        content: '';
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        width: 40px;
+        height: 40px;
+        background: radial-gradient(circle, rgba(139, 69, 19, 0.1) 0%, transparent 70%);
     }
     
     .book-item:hover {
-        border-right-color: #34495e;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-right-color: #654321;
+        box-shadow: 0 4px 15px rgba(139, 69, 19, 0.25);
+        transform: translateX(-5px);
     }
     
     .book-number {
-        color: #95a5a6;
-        font-size: 0.85rem;
+        color: #8b7355;
+        font-size: 0.9rem;
         font-weight: 500;
         margin-bottom: 0.5rem;
     }
     
     .book-main-title {
-        color: #2c3e50;
-        font-size: 1.4rem;
+        color: #3a2010;
+        font-size: 1.5rem;
         font-weight: 700;
         margin-bottom: 0.8rem;
         line-height: 1.4;
+        font-family: 'Amiri', serif;
     }
     
     .book-metadata {
-        color: #7f8c8d;
+        color: #6b5744;
         font-size: 1rem;
         margin-bottom: 1rem;
         padding: 0.7rem 0;
-        border-top: 1px solid #ecf0f1;
-        border-bottom: 1px solid #ecf0f1;
+        border-top: 2px solid #d4c5a9;
+        border-bottom: 2px solid #d4c5a9;
         font-weight: 500;
     }
     
-    .book-metadata span {
-        margin-left: 1.5rem;
-    }
-    
     .book-description {
-        color: #5a6c7d;
+        color: #5a4a3a;
         font-size: 1rem;
         line-height: 1.8;
         margin-bottom: 1.5rem;
         text-align: justify;
     }
     
-    /* منطقة الأزرار */
+    /* منطقة الأزرار الدائرية */
     .action-buttons-area {
-        background: #f8f9fa;
-        border-top: 2px solid #e9ecef;
+        background: rgba(245, 241, 232, 0.6);
+        border-top: 2px solid #c19a6b;
         padding: 1.5rem;
         margin-top: 1rem;
-        border-radius: 4px;
+        border-radius: 8px;
     }
     
-    /* الأزرار الكلاسيكية */
+    /* الأزرار الدائرية للإجراءات */
+    .circular-btn-container {
+        display: flex;
+        justify-content: space-around;
+        align-items: center;
+        gap: 1rem;
+    }
+    
+    .circular-btn {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #8b4513 0%, #654321 100%);
+        color: white;
+        border: 3px solid #a0826d;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 10px rgba(139, 69, 19, 0.3);
+    }
+    
+    .circular-btn:hover {
+        transform: translateY(-5px) scale(1.05);
+        box-shadow: 0 6px 15px rgba(139, 69, 19, 0.4);
+    }
+    
+    /* الأزرار العادية بتصميم الكتب */
     .stButton>button {
-        background: #34495e !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 4px !important;
-        padding: 0.85rem 1.5rem !important;
+        background: linear-gradient(135deg, #8b4513 0%, #654321 100%) !important;
+        color: #f5f1e8 !important;
+        border: 2px solid #a0826d !important;
+        border-radius: 8px !important;
+        padding: 0.9rem 2rem !important;
         font-weight: 600 !important;
         font-size: 1.1rem !important;
         transition: all 0.3s ease !important;
-        letter-spacing: 0.3px !important;
+        box-shadow: 0 3px 8px rgba(139, 69, 19, 0.3) !important;
     }
     
     .stButton>button:hover {
-        background: #2c3e50 !important;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.25) !important;
-        transform: translateY(-2px) !important;
+        background: linear-gradient(135deg, #654321 0%, #4a2f1a 100%) !important;
+        box-shadow: 0 5px 12px rgba(139, 69, 19, 0.4) !important;
+        transform: translateY(-3px) !important;
     }
     
-    .stButton>button:active {
-        transform: translateY(0) !important;
-    }
-    
-    /* أزرار الإجراءات الرئيسية */
-    div[data-testid="column"]:has(button) {
-        padding: 0.3rem;
-    }
-    
-    /* تحسين مظهر أزرار التحميل */
+    /* أزرار التحميل */
     .stDownloadButton>button {
-        background: #27ae60 !important;
-        font-weight: 600 !important;
-        font-size: 1.05rem !important;
-        padding: 0.8rem 1.5rem !important;
+        background: linear-gradient(135deg, #6b8e23 0%, #556b2f 100%) !important;
+        border-color: #7fa043 !important;
     }
     
     .stDownloadButton>button:hover {
-        background: #229954 !important;
-        box-shadow: 0 4px 8px rgba(39, 174, 96, 0.3) !important;
+        background: linear-gradient(135deg, #556b2f 0%, #3a4a1f 100%) !important;
     }
     
     /* مدخلات النصوص - تحسين التباين */
     .stTextInput>div>div>input {
-        border: 2px solid #7f8c8d !important;
-        border-radius: 4px !important;
-        padding: 0.9rem 1.2rem !important;
+        border: 3px solid #8b4513 !important;
+        border-radius: 8px !important;
+        padding: 1rem 1.5rem !important;
         font-size: 1.2rem !important;
         background: white !important;
         color: #000000 !important;
         font-weight: 500 !important;
+        box-shadow: inset 0 2px 4px rgba(139, 69, 19, 0.1) !important;
     }
     
     .stTextInput>div>div>input::placeholder {
-        color: #95a5a6 !important;
+        color: #8b7355 !important;
         opacity: 0.7 !important;
     }
     
     .stTextInput>div>div>input:focus {
-        border-color: #2c3e50 !important;
-        background: white !important;
-        box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1) !important;
+        border-color: #654321 !important;
+        background: #fffef8 !important;
+        box-shadow: 0 0 0 4px rgba(139, 69, 19, 0.1), inset 0 2px 4px rgba(139, 69, 19, 0.1) !important;
         color: #000000 !important;
+    }
+    
+    /* عداد الوقت الدائري */
+    .timer-circle {
+        width: 120px;
+        height: 120px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #8b4513 0%, #654321 100%);
+        color: #f5f1e8;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 2rem;
+        font-weight: 700;
+        border: 5px solid #a0826d;
+        box-shadow: 0 4px 15px rgba(139, 69, 19, 0.3);
+        margin: 0 auto;
     }
     
     /* صندوق النتائج */
     .results-header {
-        background: #ecf0f1;
-        border-left: 4px solid #34495e;
+        background: rgba(139, 69, 19, 0.1);
+        border-left: 5px solid #8b4513;
         padding: 1rem 1.5rem;
         margin-bottom: 1.5rem;
+        border-radius: 4px;
     }
     
     .results-title {
-        color: #2c3e50;
-        font-size: 1.3rem;
-        font-weight: 600;
+        color: #3a2010;
+        font-size: 1.5rem;
+        font-weight: 700;
         margin: 0;
+        font-family: 'Amiri', serif;
     }
     
     .results-stats {
-        color: #7f8c8d;
-        font-size: 0.9rem;
+        color: #6b5744;
+        font-size: 1rem;
         margin-top: 0.3rem;
     }
     
-    /* شاشة الانتظار */
-    .waiting-container {
-        background: white;
-        border: 2px solid #e74c3c;
-        padding: 3rem;
-        text-align: center;
-        margin: 3rem auto;
-        max-width: 600px;
-    }
-    
-    .waiting-title {
-        color: #c0392b;
-        font-size: 1.8rem;
-        font-weight: 600;
-        margin-bottom: 1rem;
-    }
-    
-    .waiting-text {
-        color: #7f8c8d;
-        font-size: 1.1rem;
-        line-height: 1.6;
-    }
-    
-    .timer-display {
-        background: #ecf0f1;
-        border: 1px solid #bdc3c7;
-        border-radius: 2px;
-        padding: 1.5rem;
-        margin: 1.5rem 0;
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #34495e;
-    }
-    
-    /* شاشة الترحيب */
-    .welcome-box {
-        background: white;
-        border: 1px solid #dee2e6;
-        padding: 3rem;
-        text-align: center;
-        margin: 2rem auto;
-        max-width: 700px;
-    }
-    
-    .welcome-title {
-        color: #2c3e50;
-        font-size: 2.2rem;
-        font-weight: 700;
-        margin-bottom: 1rem;
-    }
-    
-    .welcome-description {
-        color: #7f8c8d;
-        font-size: 1.1rem;
-        line-height: 1.8;
-        margin-bottom: 2rem;
-    }
-    
-    .status-indicator {
-        display: inline-block;
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        background: #27ae60;
-        margin-left: 0.5rem;
-        animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-    }
-    
-    /* شارة الحالة */
+    /* الشارات */
     .badge {
         display: inline-block;
-        padding: 0.4rem 1rem;
-        background: #ecf0f1;
-        color: #2c3e50;
-        border-radius: 2px;
-        font-size: 0.85rem;
-        font-weight: 500;
-        border: 1px solid #bdc3c7;
+        padding: 0.5rem 1.2rem;
+        background: rgba(139, 69, 19, 0.15);
+        color: #3a2010;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        border: 2px solid #c19a6b;
     }
     
     .badge-admin {
-        background: #34495e;
-        color: white;
-        border-color: #2c3e50;
+        background: linear-gradient(135deg, #8b4513 0%, #654321 100%);
+        color: #f5f1e8;
+        border-color: #a0826d;
     }
     
-    /* صندوق إنهاء الجلسة للمشرف */
+    /* صندوق المشرف */
     .admin-control-box {
-        background: #fff3cd;
-        border: 2px solid #ffc107;
-        border-radius: 4px;
+        background: rgba(255, 235, 205, 0.9);
+        border: 3px solid #daa520;
+        border-radius: 8px;
         padding: 1.5rem;
         margin: 1.5rem 0;
+        box-shadow: 0 3px 10px rgba(218, 165, 32, 0.3);
     }
     
     /* لوحة التحكم */
     .admin-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, rgba(139, 69, 19, 0.95) 0%, rgba(101, 67, 33, 0.95) 100%);
         padding: 2rem;
         border-radius: 10px;
         margin-bottom: 2rem;
         text-align: center;
-        color: white;
+        color: #f5f1e8;
+        border: 3px solid #a0826d;
+        box-shadow: 0 5px 20px rgba(139, 69, 19, 0.4);
     }
     
     .duplicate-card {
-        background: white;
-        border: 2px solid #e74c3c;
+        background: rgba(255, 255, 255, 0.98);
+        border: 2px solid #d4a574;
         border-radius: 10px;
         padding: 1.5rem;
         margin: 1rem 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        box-shadow: 0 3px 10px rgba(139, 69, 19, 0.2);
     }
     
     .file-info {
-        background: #f8f9fa;
+        background: rgba(245, 241, 232, 0.8);
         padding: 1rem;
         border-radius: 5px;
         margin: 0.5rem 0;
-        border-left: 4px solid #3498db;
+        border-left: 4px solid #8b4513;
     }
     
     .warning-box {
-        background: #fff3cd;
-        border: 2px solid #ffc107;
+        background: rgba(255, 235, 205, 0.95);
+        border: 3px solid #daa520;
         border-radius: 8px;
         padding: 1.5rem;
         margin: 1rem 0;
     }
     
     .success-box {
-        background: #d4edda;
-        border: 2px solid #28a745;
+        background: rgba(144, 238, 144, 0.2);
+        border: 3px solid #6b8e23;
         border-radius: 8px;
         padding: 1rem;
+        margin: 1rem 0;
+    }
+    
+    .waiting-container {
+        background: rgba(255, 255, 255, 0.95);
+        border: 3px solid #8b4513;
+        padding: 3rem;
+        text-align: center;
+        margin: 3rem auto;
+        max-width: 600px;
+        border-radius: 10px;
+        box-shadow: 0 5px 20px rgba(139, 69, 19, 0.3);
+    }
+    
+    .welcome-box {
+        background: rgba(255, 255, 255, 0.95);
+        border: 3px solid #c19a6b;
+        padding: 3rem;
+        text-align: center;
+        margin: 2rem auto;
+        max-width: 700px;
+        border-radius: 10px;
+        box-shadow: 0 5px 20px rgba(139, 69, 19, 0.2);
+    }
+</style>
+""", unsafe_allow_html=True)padding: 1rem;
         margin: 1rem 0;
     }
 </style>
