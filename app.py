@@ -325,8 +325,11 @@ st.markdown("""
 
 query = st.text_input("", placeholder="ابحث عن كتاب...", key="search_query")
 
+def perform_search():
+    st.session_state.search_results = search_books_async(query)
+
 col_btn1, col_btn2 = st.columns(2)
 with col_btn1:
-    st.button("بحث في الكتب", on_click=lambda: st.session_state.search_results = search_books_async(query))
+    st.button("بحث في الكتب", on_click=perform_search)
 with col_btn2:
     st.button("أشعر بالحظ", on_click=lambda: st.write("ميزة قادمة قريباً..."))
