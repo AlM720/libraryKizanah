@@ -594,4 +594,14 @@ if status == "READY_TO_ENTER":
                         border: 1px solid rgba(44, 62, 80, 0.1); text-align: center;">
             """, unsafe_allow_html=True)
             
-            st.markdown("<h2 style='color: #2c3e50; margin-bottom: 2rem;'>🚪 الدخول إلى المكتبة</h2>", unsafe_allow_html
+            st.markdown("<h2 style='color: #2c3e50; margin-bottom: 2rem;'>🚪 الدخول إلى المكتبة</h2>", unsafe_allow_html=True)
+            
+            if st.button("دخول", use_container_width=True, type="primary"):
+                state.locked = True
+                state.current_user_token = st.session_state.user_token
+                state.last_activity = time.time()
+                st.rerun()
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
