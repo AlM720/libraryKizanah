@@ -11,208 +11,200 @@ import re
 from PyPDF2 import PdfReader
 import fitz  # PyMuPDF
 from PIL import Image
-from collections import defaultdict
 
 # تفعيل تعدد المهام لبيئة Streamlit
 nest_asyncio.apply()
 
 # إعداد الصفحة
 st.set_page_config(
-    page_title="المكتبة الرقمية",
+    page_title="باحث الكتب - المكتبة الرقمية",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- تصميم CSS احترافي بخلفية بيضاء ومضيئة ---
+# =========================
+# 🎨 تصميم يشبه واجهة جوجل
+# =========================
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@300;400;500;700&display=swap');
     
     * {
         font-family: 'Tajawal', sans-serif;
+        box-sizing: border-box;
     }
-    
+
+    body {
+        background-color: #ffffff;
+    }
+
     h1, h2, h3 {
         font-family: 'Amiri', serif;
     }
 
-    /* الخلفية البيضاء المضيئة */
-    .stApp {
-        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-        color: #2c3e50;
+    /* الشريط العلوي */
+    .top-bar {
+        width: 100%;
+        padding: 0.8rem 2rem;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        direction: rtl;
     }
 
-    /* الهيدر الرئيسي */
-    .main-header {
-        background: linear-gradient(135deg, #ffffff 0%, #e8f4f8 100%);
-        backdrop-filter: blur(10px);
-        padding: 3rem 0;
-        margin-bottom: 3rem;
-        border-bottom: 1px solid rgba(44, 62, 80, 0.1);
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    .top-left, .top-right {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
     }
 
-    /* عنوان المكتبة */
-    .library-title {
-        color: #2c3e50;
-        font-size: 3.5rem;
-        font-weight: 700;
+    .top-label {
+        font-size: 0.95rem;
+        color: #555555;
+    }
+
+    .session-timer {
+        font-weight: 600;
+        color: #202124;
+        font-size: 0.95rem;
+        min-width: 90px;
         text-align: center;
-        margin: 0;
-        letter-spacing: 1px;
-        background: linear-gradient(45deg, #2c3e50, #3498db);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
     }
 
-    /* الشعار الفرعي */
-    .library-subtitle {
-        color: #7f8c8d;
-        text-align: center;
-        font-size: 1.3rem;
-        margin-top: 1rem;
-        font-weight: 300;
+    .end-session-btn {
+        padding: 0.35rem 0.8rem;
+        background-color: #d93025;
+        color: #ffffff;
+        border-radius: 16px;
+        font-size: 0.85rem;
+        border: none;
     }
 
-    /* حاوية البحث المركزية */
+    .admin-link {
+        font-size: 0.95rem;
+        color: #1a73e8;
+        cursor: pointer;
+        text-decoration: none;
+    }
+
+    .admin-link:hover {
+        text-decoration: underline;
+    }
+
+    /* منطقة البحث في الوسط (أسلوب جوجل) */
+    .center-wrapper {
+        min-height: calc(100vh - 80px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
     .search-container {
-        max-width: 800px;
-        margin: 0 auto 2rem auto;
-        padding: 2rem;
-        background: rgba(255, 255, 255, 0.9);
-        border-radius: 25px;
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(44, 62, 80, 0.1);
-        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
+        text-align: center;
+        max-width: 700px;
+        width: 100%;
     }
 
-    /* حقل البحث */
+    .search-title {
+        font-size: 2.8rem;
+        font-weight: 700;
+        color: #202124;
+        margin-bottom: 1rem;
+    }
+
+    .search-subtitle {
+        font-size: 1rem;
+        color: #5f6368;
+        margin-bottom: 2rem;
+    }
+
+    .search-box-wrapper {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .search-box-wrapper > div {
+        flex: 1;
+        max-width: 600px;
+    }
+
     .stTextInput>div>div>input {
+        border-radius: 24px !important;
+        padding: 0.8rem 1.2rem !important;
+        font-size: 1rem !important;
+        border: 1px solid #dfe1e5 !important;
         background: #ffffff !important;
-        border: 2px solid #e0e0e0 !important;
-        border-radius: 50px !important;
-        padding: 1.5rem 2rem !important;
-        font-size: 1.3rem !important;
-        color: #2c3e50 !important;
-        font-weight: 400 !important;
-        transition: all 0.3s ease;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+        color: #000000 !important;
     }
 
     .stTextInput>div>div>input:focus {
-        border-color: #3498db !important;
-        background: #ffffff !important;
-        box-shadow: 0 0 30px rgba(52, 152, 219, 0.3) !important;
-        color: #2c3e50 !important;
+        border-color: #1a73e8 !important;
+        box-shadow: 0 0 0 1px #1a73e8 !important;
     }
 
-    .stTextInput>div>div>input::placeholder {
-        color: #95a5a6 !important;
-    }
-
-    /* زر البحث */
     .stButton>button {
-        background: linear-gradient(45deg, #3498db, #2980b9) !important;
-        color: #ffffff !important;
-        border: none !important;
-        border-radius: 50px !important;
-        padding: 1rem 3rem !important;
-        font-size: 1.2rem !important;
-        font-weight: 600 !important;
-        transition: all 0.3s ease;
-        margin-top: 1rem;
-        box-shadow: 0 5px 20px rgba(52, 152, 219, 0.3);
+        border-radius: 4px;
+        border: 1px solid #f8f9fa;
+        background-color: #f8f9fa;
+        color: #3c4043;
+        font-size: 0.9rem;
+        padding: 0.45rem 1.1rem;
+        cursor: pointer;
+        transition: 0.2s ease;
     }
 
     .stButton>button:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 15px 40px rgba(52, 152, 219, 0.4);
-        background: linear-gradient(45deg, #2980b9, #3498db) !important;
+        box-shadow: 0 1px 1px rgba(0,0,0,0.1);
+        border-color: #dadce0;
+        background-color: #f8f9fa;
     }
 
-    /* شريط المؤقت العلوي */
-    .timer-bar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        background: rgba(255, 255, 255, 0.95);
-        backdrop-filter: blur(10px);
-        padding: 0.5rem;
-        z-index: 1000;
-        border-bottom: 1px solid rgba(44, 62, 80, 0.1);
-        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-    }
-
-    .timer-text {
-        color: #2c3e50;
-        text-align: center;
+    .results-header {
+        margin-top: 1.2rem;
+        text-align: right;
+        direction: rtl;
+        color: #5f6368;
         font-size: 0.9rem;
-        font-weight: 400;
     }
 
-    /* زر دخول المشرف */
-    .admin-button {
-        position: fixed;
-        bottom: 2rem;
-        right: 2rem;
-        background: rgba(255, 255, 255, 0.9) !important;
-        border: 1px solid rgba(44, 62, 80, 0.2) !important;
-        border-radius: 50% !important;
-        width: 60px !important;
-        height: 60px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        cursor: pointer !important;
-        transition: all 0.3s ease !important;
-        backdrop-filter: blur(10px);
-        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
+    .result-card {
+        border-bottom: 1px solid #e0e0e0;
+        padding: 0.8rem 0;
+        direction: rtl;
+        text-align: right;
     }
 
-    .admin-button:hover {
-        background: rgba(52, 152, 219, 0.9) !important;
-        transform: scale(1.1);
-        box-shadow: 0 10px 30px rgba(52, 152, 219, 0.3);
+    .result-title {
+        font-size: 1rem;
+        color: #1a0dab;
+        margin-bottom: 0.1rem;
+        font-weight: 600;
+        word-wrap: break-word;
     }
 
-    /* نتائج البحث */
-    .search-results {
-        max-width: 1000px;
-        margin: 2rem auto;
+    .result-meta {
+        font-size: 0.8rem;
+        color: #5f6368;
+        margin-bottom: 0.3rem;
     }
 
-    .book-card {
-        background: rgba(255, 255, 255, 0.95);
-        border-radius: 15px;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        border: 1px solid rgba(44, 62, 80, 0.1);
-        transition: all 0.3s ease;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
+    .result-caption {
+        font-size: 0.9rem;
+        color: #4d5156;
     }
 
-    .book-card:hover {
-        background: #ffffff;
-        transform: translateY(-3px);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+    .pagination-bar {
+        margin-top: 1rem;
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
     }
 
-    /* رسائل الحالة */
-    .stSuccess, .stError, .stWarning, .stInfo {
-        background: rgba(255, 255, 255, 0.9) !important;
-        border: 1px solid rgba(44, 62, 80, 0.1) !important;
-        border-radius: 10px !important;
-        color: #2c3e50 !important;
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
-    }
-
-    /* إخفاء العناصر الافتراضية */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -245,14 +237,17 @@ if 'is_admin' not in st.session_state:
 if 'admin_mode' not in st.session_state:
     st.session_state.admin_mode = False
 
-if 'current_page' not in st.session_state:
-    st.session_state.current_page = 0
-
 if 'search_results' not in st.session_state:
     st.session_state.search_results = []
 
 if 'search_time' not in st.session_state:
     st.session_state.search_time = None
+
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = 0
+
+if 'session_start_time' not in st.session_state:
+    st.session_state.session_start_time = None
 
 # --- دالة تنظيف الذاكرة ---
 def clear_session_data():
@@ -273,6 +268,7 @@ def check_access():
         state.locked = False
         state.current_user_token = None
         clear_session_data()
+        st.session_state.session_start_time = None
     
     if st.session_state.is_admin:
         return "ADMIN_ACCESS"
@@ -288,7 +284,7 @@ def check_access():
 
 status = check_access()
 
-# --- دوال الاتصال ---
+# --- دوال الاتصال مع تيليجرام ---
 api_id = int(st.secrets["api_id"])
 api_hash = st.secrets["api_hash"]
 session_string = st.secrets["session_string"]
@@ -411,197 +407,288 @@ def get_first_page_preview(message_id):
         st.error(f"خطأ في إنشاء المعاينة: {e}")
         return None
 
-# ==========================================
-# الواجهة الرئيسية
-# ==========================================
-
-# شريط المؤقت العلوي
-if status == "USER_ACCESS":
-    st.markdown("""
-    <div class="timer-bar">
-        <div class="timer-text">
-            ⏰ الجلسة نشطة | الوقت المتبقي: {} ثانية
-        </div>
-    </div>
-    """.format(int(TIMEOUT_SECONDS - (time.time() - state.last_activity))), unsafe_allow_html=True)
-
-# الهيدر الرئيسي
-st.markdown("""
-<div class="main-header">
-    <h1 class="library-title">المكتبة الرقمية</h1>
-    <p class="library-subtitle">اكتشف عالم المعرفة بين يديك</p>
-</div>
-""", unsafe_allow_html=True)
-
-# حاوية البحث المركزية
-st.markdown('<div class="search-container">', unsafe_allow_html=True)
-
-# حقل البحث
-search_query = st.text_input(
-    "",
-    placeholder="ابحث عن كتاب...",
-    label_visibility="collapsed"
-)
-
-# زر البحث
-col1, col2, col3 = st.columns([1, 2, 1])
-with col2:
-    if st.button("🔍 بحث", use_container_width=True):
-        if search_query:
-            with st.spinner("جاري البحث..."):
-                results = search_books_async(search_query)
-                st.session_state.search_results = results
-                st.session_state.search_time = time.time()
-                st.session_state.current_page = 0
-        else:
-            st.warning("يرجى إدخال كلمة بحث")
-
-st.markdown('</div>', unsafe_allow_html=True)
-
-# عرض النتائج
-if st.session_state.search_results:
-    st.markdown('<div class="search-results">', unsafe_allow_html=True)
+# --- دالة تنظيف الوصف من الروابط (تبقى كما هي للاستخدام مع النتائج) ---
+def clean_description(text):
+    """إزالة الروابط من النص"""
+    if not text:
+        return "لا يوجد وصف متاح لهذا الكتاب."
     
-    results = st.session_state.search_results
-    total_pages = (len(results) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+    text = re.sub(r'https?://S+', '', text)
+    text = re.sub(r'www.S+', '', text)
+    text = re.sub(r't.me/S+', '', text)
+    text = re.sub(r's+', ' ', text).strip()
     
-    # عرض النتائج الحالية
-    start_idx = st.session_state.current_page * ITEMS_PER_PAGE
-    end_idx = min(start_idx + ITEMS_PER_PAGE, len(results))
+    return text if text else "لا يوجد وصف متاح لهذا الكتاب."
+
+
+# ==========================
+# واجهة الشريط العلوي العام
+# ==========================
+def render_top_bar():
+    remaining = 0
+    if st.session_state.session_start_time is not None:
+        elapsed = int(time.time() - st.session_state.session_start_time)
+        remaining = max(0, TIMEOUT_SECONDS - elapsed)
+    # تحويل للعرض (دقائق:ثواني)
+    minutes = remaining // 60
+    seconds = remaining % 60
+    timer_str = f"{minutes:02d}:{seconds:02d}"
     
-    for result in results[start_idx:end_idx]:
-        with st.container():
-            st.markdown(f"""
-            <div class="book-card">
-                <h3 style="color: #2c3e50; margin-bottom: 0.5rem;">📚 {result['file_name']}</h3>
-                <p style="color: #7f8c8d; font-size: 0.9rem; margin-bottom: 0.5rem;">
-                    📅 {result['date'].strftime('%Y-%m-%d')} | 📊 {result['size'] / 1024 / 1024:.1f} ميجابايت
-                </p>
+    col_top = st.container()
+    with col_top:
+        st.markdown(
+            f"""
+            <div class="top-bar">
+                <div class="top-right">
+                    <span class="top-label">مدة الجلسة المتبقية</span>
+                    <span class="session-timer">{timer_str}</span>
+                </div>
+                <div class="top-left">
+                    <a class="admin-link" href="#" onclick="return false;">دخول المشرف</a>
+                </div>
             </div>
-            """, unsafe_allow_html=True)
-            
-            col1, col2, col3 = st.columns([1, 1, 1])
-            
-            with col1:
-                if st.button("⬇️ تحميل", key=f"download_{result['id']}"):
-                    buffer, file_name = download_book_to_memory(result['id'])
-                    if buffer:
-                        st.download_button(
-                            label="💾 حفظ الملف",
-                            data=buffer,
-                            file_name=file_name,
-                            mime="application/octet-stream",
-                            key=f"save_{result['id']}"
-                        )
-            
-            with col2:
-                if st.button("👁️ معاينة", key=f"preview_{result['id']}"):
-                    preview = get_first_page_preview(result['id'])
-                    if preview:
-                        st.image(preview, caption="الصفحة الأولى", use_column_width=True)
-                    else:
-                        st.error("لا توجد معاينة متاحة")
-            
-            with col3:
-                if st.button("📄 عدد الصفحات", key=f"pages_{result['id']}"):
-                    pages = get_pdf_page_count(result['id'])
-                    if pages:
-                        st.info(f"📖 عدد الصفحات: {pages}")
-                    else:
-                        st.error("لا يمكن حساب عدد الصفحات")
-    
-    # التنقل بين الصفحات
-    if total_pages > 1:
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            prev, page_info, next_btn = st.columns([1, 2, 1])
-            with prev:
-                if st.session_state.current_page > 0:
-                    if st.button("⬅️ السابق"):
-                        st.session_state.current_page -= 1
-                        st.rerun()
-            
-            with page_info:
-                st.write(f"الصفحة {st.session_state.current_page + 1} من {total_pages}")
-            
-            with next_btn:
-                if st.session_state.current_page < total_pages - 1:
-                    if st.button("التالي ➡️"):
-                        st.session_state.current_page += 1
-                        st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+            """,
+            unsafe_allow_html=True
+        )
+    return timer_str
 
-# زر دخول المشرف
-if st.button("⚙️", key="admin_button", help="دخول المشرف"):
-    st.session_state.show_admin_login = True
+# لكن لا يمكن ربط onclick بجافاسكربت من Streamlit بسهولة، لذا نضيف أزرار فعلية مخفية ضمن الشريط:
+def render_top_controls():
+    top_cols = st.columns([3, 1, 1])
+    with top_cols[1]:
+        # زر إنهاء الجلسة
+        end_session = st.button("إنهاء الجلسة", key="end_session_top")
+    with top_cols[2]:
+        admin_btn = st.button("دخول المشرف", key="admin_top")
+    return end_session, admin_btn
 
-# نافذة تسجيل دخول المشرف
-if 'show_admin_login' in st.session_state and st.session_state.show_admin_login:
-    with st.container():
-        st.markdown("""
-        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
-                    background: rgba(255, 255, 255, 0.9); z-index: 2000; 
-                    display: flex; align-items: center; justify-content: center;">
-        """, unsafe_allow_html=True)
-        
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.markdown("""
-            <div style="background: #ffffff; padding: 2rem; 
-                        border-radius: 15px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1); 
-                        border: 1px solid rgba(44, 62, 80, 0.1);">
-            """, unsafe_allow_html=True)
-            
-            st.markdown("<h3 style='text-align: center; color: #2c3e50;'>🔐 دخول المشرف</h3>", unsafe_allow_html=True)
-            
-            admin_password = st.text_input("كلمة المرور", type="password", key="admin_pass")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("دخول"):
-                    if admin_password == st.secrets["admin_password"]:
-                        st.session_state.is_admin = True
-                        st.session_state.admin_mode = True
-                        st.session_state.show_admin_login = False
-                        st.rerun()
-                    else:
-                        st.error("كلمة مرور خاطئة")
-            
-            with col2:
-                if st.button("إلغاء"):
-                    st.session_state.show_admin_login = False
-                    st.rerun()
-            
-            st.markdown("</div>", unsafe_allow_html=True)
-        
+# ==========================
+# منطق الواجهة حسب حالة الدخول
+# ==========================
+def show_admin_login():
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div style="text-align:center; direction:rtl;">
+            <h2>دخول المشرف</h2>
+            <p>أدخل كلمة المرور للدخول إلى وضع المشرف.</p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+    password = st.text_input("كلمة مرور المشرف", type="password", key="admin_pass_input")
+    if st.button("تأكيد الدخول", key="admin_login_btn"):
+        if password == st.secrets["admin_password"]:
+            st.session_state.is_admin = True
+            st.session_state.admin_mode = True
+            st.success("تم تسجيل الدخول كمشرف.")
+            st.rerun()
+        else:
+            st.error("كلمة المرور غير صحيحة.")
+
+def show_google_like_search():
+    st.markdown("<br>", unsafe_allow_html=True)
+    render_top_bar()
+    end_session, admin_btn = render_top_controls()
+    
+    # أزرار الشريط
+    if end_session:
+        state.locked = False
+        state.current_user_token = None
+        st.session_state.session_start_time = None
+        clear_session_data()
+        st.success("تم إنهاء الجلسة الحالية.")
+        st.experimental_rerun()
+    if admin_btn:
+        st.session_state.admin_mode = True
+        st.experimental_rerun()
+
+    # منطقة البحث في الوسط
+    st.markdown("<div class='center-wrapper'><div class='search-container'>", unsafe_allow_html=True)
+    st.markdown(
+        """
+        <div class="search-title">المكتبة الرقمية</div>
+        <div class="search-subtitle">
+            محرك بحث عن الكتب والمراجع من قناة تيليجرام.
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # مربع البحث
+    col_search = st.container()
+    with col_search:
+        st.markdown("<div class='search-box-wrapper'>", unsafe_allow_html=True)
+        query = st.text_input("ابحث عن كتاب", label_visibility="collapsed", key="main_search_input")
         st.markdown("</div>", unsafe_allow_html=True)
 
-# نافذة دخول المستخدم
-if status == "READY_TO_ENTER":
-    with st.container():
-        st.markdown("""
-        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
-                    background: rgba(255, 255, 255, 0.95); z-index: 3000; 
-                    display: flex; align-items: center; justify-content: center;">
-        """, unsafe_allow_html=True)
-        
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.markdown("""
-            <div style="background: #ffffff; padding: 3rem; 
-                        border-radius: 20px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); 
-                        border: 1px solid rgba(44, 62, 80, 0.1); text-align: center;">
-            """, unsafe_allow_html=True)
-            
-            st.markdown("<h2 style='color: #2c3e50; margin-bottom: 2rem;'>🚪 الدخول إلى المكتبة</h2>", unsafe_allow_html=True)
-            
-            if st.button("دخول", use_container_width=True, type="primary"):
+        btn_cols = st.columns([1, 1, 1])
+        with btn_cols[1]:
+            search_clicked = st.button("بحث عن الكتب", key="search_books_btn")
+
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+    # تنفيذ البحث
+    if search_clicked and query.strip():
+        start_time = time.time()
+        st.session_state.search_results = search_books_async(query.strip())
+        st.session_state.search_time = time.time() - start_time
+        st.session_state.current_page = 0
+        st.experimental_rerun()
+
+    # عرض النتائج إن وجدت
+    if st.session_state.search_results:
+        total_results = len(st.session_state.search_results)
+        page = st.session_state.current_page
+        start_idx = page * ITEMS_PER_PAGE
+        end_idx = start_idx + ITEMS_PER_PAGE
+        page_results = st.session_state.search_results[start_idx:end_idx]
+
+        st.markdown(
+            f"<div class='results-header'>حوالي {total_results} نتيجة (في {st.session_state.search_time:.2f} ثانية)</div>",
+            unsafe_allow_html=True
+        )
+
+        for result in page_results:
+            with st.container():
+                st.markdown("<div class='result-card'>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='result-title'>{result['file_name']}</div>",
+                    unsafe_allow_html=True
+                )
+                size_mb = result['size'] / (1024 * 1024)
+                st.markdown(
+                    f"<div class='result-meta'>الحجم: {size_mb:.2f} م.ب - التاريخ: {result['date'].strftime('%Y-%m-%d')}</div>",
+                    unsafe_allow_html=True
+                )
+                caption = clean_description(result['caption'])
+                st.markdown(
+                    f"<div class='result-caption'>{caption}</div>",
+                    unsafe_allow_html=True
+                )
+
+                c1, c2 = st.columns([1, 1])
+                with c1:
+                    if st.button("تحميل الكتاب", key=f"download_{result['id']}"):
+                        buffer, file_name = download_book_to_memory(result['id'])
+                        if buffer:
+                            st.download_button(
+                                label="اضغط هنا لحفظ الملف",
+                                data=buffer,
+                                file_name=file_name,
+                                mime="application/pdf",
+                                key=f"save_{result['id']}"
+                            )
+                with c2:
+                    if st.button("معاينة الصفحة الأولى", key=f"preview_{result['id']}"):
+                        img = get_first_page_preview(result['id'])
+                        if img:
+                            st.image(img, caption="الصفحة الأولى")
+
+                st.markdown("</div>", unsafe_allow_html=True)
+
+        # شريط الصفحات
+        total_pages = (total_results - 1) // ITEMS_PER_PAGE + 1
+        if total_pages > 1:
+            st.markdown("<div class='pagination-bar'>", unsafe_allow_html=True)
+            col_prev, col_page, col_next = st.columns([1, 2, 1])
+            with col_prev:
+                if st.button("السابق", disabled=(page == 0)):
+                    st.session_state.current_page -= 1
+                    st.experimental_rerun()
+            with col_page:
+                st.markdown(
+                    f"<div style='text-align:center; direction:rtl;'>صفحة {page+1} من {total_pages}</div>",
+                    unsafe_allow_html=True
+                )
+            with col_next:
+                if st.button("التالي", disabled=(page >= total_pages - 1)):
+                    st.session_state.current_page += 1
+                    st.experimental_rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+
+
+# ==========================
+# تدفق التطبيق الأساسي
+# ==========================
+
+if status == "ADMIN_PANEL":
+    # في هذا الوضع يمكن لاحقاً إضافة واجهة خاصة بالمشرف إن رغبت
+    render_top_bar()
+    end_session, _ = render_top_controls()
+    if end_session:
+        state.locked = False
+        state.current_user_token = None
+        st.session_state.session_start_time = None
+        st.session_state.admin_mode = False
+        clear_session_data()
+        st.success("تم إنهاء الجلسة الحالية.")
+        st.experimental_rerun()
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.info("أنت الآن في وضع المشرف. (واجهة إدارة مفصلة يمكن إضافتها هنا لاحقاً).")
+
+elif status == "ADMIN_ACCESS":
+    render_top_bar()
+    end_session, _ = render_top_controls()
+    if end_session:
+        state.locked = False
+        state.current_user_token = None
+        st.session_state.session_start_time = None
+        st.session_state.is_admin = False
+        clear_session_data()
+        st.success("تم إنهاء الجلسة الحالية.")
+        st.experimental_rerun()
+    show_google_like_search()
+
+elif status == "USER_ACCESS":
+    # جلسة مستخدم قائمة
+    if st.session_state.session_start_time is None:
+        st.session_state.session_start_time = time.time()
+    show_google_like_search()
+
+elif status == "READY_TO_ENTER":
+    # لا توجد جلسة حالياً: شاشة دخول تشبه صفحة جوجل الأولى
+    render_top_bar()
+    end_session, admin_btn = render_top_controls()
+    if end_session:
+        # لا يوجد شيء لإنهائه فعلياً لكن نبقي المنطق
+        state.locked = False
+        state.current_user_token = None
+        st.session_state.session_start_time = None
+        clear_session_data()
+        st.experimental_rerun()
+    if admin_btn:
+        show_admin_login()
+    else:
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("<div class='center-wrapper'><div class='search-container'>", unsafe_allow_html=True)
+        st.markdown(
+            """
+            <div class="search-title">المكتبة الرقمية</div>
+            <div class="search-subtitle">
+                نظام يسمح بدخول جلسة واحدة فقط في كل مرة. اضغط على الزر لبدء جلستك.
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        col_center = st.columns([1, 1, 1])
+        with col_center[1]:
+            if st.button("بدء استخدام المكتبة", key="start_session_btn"):
                 state.locked = True
                 state.current_user_token = st.session_state.user_token
                 state.last_activity = time.time()
-                st.rerun()
-            
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+                st.session_state.session_start_time = time.time()
+                st.experimental_rerun()
+        st.markdown("</div></div>", unsafe_allow_html=True)
+
+else:
+    # حالة: النظام مقفول ومستخدم آخر يحاول الدخول
+    render_top_bar()
+    end_session, admin_btn = render_top_controls()
+    if end_session:
+        # لا يُسمح للمستخدم العادي بإغلاق جلسة مستخدم آخر
+        st.warning("لا يمكنك إنهاء جلسة مستخدم آخر. اطلب من المشرف التدخل.")
+    if admin_btn:
+        show_admin_login()
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.warning("هناك جلسة مستخدم أخرى قيد العمل حالياً. الرجاء المحاولة لاحقاً.")
