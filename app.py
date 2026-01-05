@@ -735,7 +735,7 @@ if st.session_state.admin_mode:
     
     st.stop()
 
-# ==========================================
+# ==========================================# ==========================================
 # 🛑 شاشة الانتظار
 # ==========================================
 if status == False:
@@ -746,9 +746,11 @@ if status == False:
     </div>
     """, unsafe_allow_html=True)
     
-    time_passed = int(time.time() - state.last_activity)
-    time_left = TIMEOUT_SECONDS - time_passed
-    if time_left < 0: time_left = 0
+    # تحديث الوقت الأخير بناءً على النشاط
+    state.last_activity = time.time()  # التحديث عند الدخول إلى شاشة الانتظار
+    time_passed = int(time.time() - state.last_activity)  # الوقت الذي مر منذ آخر نشاط
+    time_left = TIMEOUT_SECONDS - time_passed  # الوقت المتبقي
+    if time_left < 0: time_left = 0  # التأكد من أن الوقت المتبقي لا يصبح سالباً
     
     st.markdown(f"""
     <div class="waiting-container">
@@ -767,7 +769,8 @@ if status == False:
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         if st.button("تحديث الحالة", use_container_width=True):
-            st.rerun()
+            state.last_activity = time.time()  # تحديث الوقت عند الضغط على "تحديث الحالة"
+            st.rerun()  # إعادة تحميل الصفحة لعرض الوقت المتبقي بشكل جديد
     
     st.markdown("---")
     
