@@ -24,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- تصميم CSS احترافي مستوحى من المواقع الثلاثة ---
+# --- تصميم CSS احترافي بخلفية بيضاء ومضيئة ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@300;400;500;700&display=swap');
@@ -37,30 +37,31 @@ st.markdown("""
         font-family: 'Amiri', serif;
     }
 
-    /* الخلفية الرئيسية */
+    /* الخلفية البيضاء المضيئة */
     .stApp {
-        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-        color: #ffffff;
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+        color: #2c3e50;
     }
 
     /* الهيدر الرئيسي */
     .main-header {
-        background: rgba(0, 0, 0, 0.8);
+        background: linear-gradient(135deg, #ffffff 0%, #e8f4f8 100%);
         backdrop-filter: blur(10px);
-        padding: 2rem 0;
+        padding: 3rem 0;
         margin-bottom: 3rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        border-bottom: 1px solid rgba(44, 62, 80, 0.1);
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
     }
 
     /* عنوان المكتبة */
     .library-title {
-        color: #ffffff;
+        color: #2c3e50;
         font-size: 3.5rem;
         font-weight: 700;
         text-align: center;
         margin: 0;
-        letter-spacing: 2px;
-        background: linear-gradient(45deg, #ffffff, #cccccc);
+        letter-spacing: 1px;
+        background: linear-gradient(45deg, #2c3e50, #3498db);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -68,7 +69,7 @@ st.markdown("""
 
     /* الشعار الفرعي */
     .library-subtitle {
-        color: #aaaaaa;
+        color: #7f8c8d;
         text-align: center;
         font-size: 1.3rem;
         margin-top: 1rem;
@@ -80,38 +81,41 @@ st.markdown("""
         max-width: 800px;
         margin: 0 auto 2rem auto;
         padding: 2rem;
-        background: rgba(255, 255, 255, 0.05);
-        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.9);
+        border-radius: 25px;
         backdrop-filter: blur(10px);
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(44, 62, 80, 0.1);
+        box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1);
     }
 
     /* حقل البحث */
     .stTextInput>div>div>input {
-        background: rgba(255, 255, 255, 0.1) !important;
-        border: 2px solid rgba(255, 255, 255, 0.2) !important;
+        background: #ffffff !important;
+        border: 2px solid #e0e0e0 !important;
         border-radius: 50px !important;
         padding: 1.5rem 2rem !important;
         font-size: 1.3rem !important;
-        color: #ffffff !important;
+        color: #2c3e50 !important;
         font-weight: 400 !important;
         transition: all 0.3s ease;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
     }
 
     .stTextInput>div>div>input:focus {
-        border-color: #ffffff !important;
-        background: rgba(255, 255, 255, 0.15) !important;
-        box-shadow: 0 0 30px rgba(255, 255, 255, 0.2) !important;
+        border-color: #3498db !important;
+        background: #ffffff !important;
+        box-shadow: 0 0 30px rgba(52, 152, 219, 0.3) !important;
+        color: #2c3e50 !important;
     }
 
     .stTextInput>div>div>input::placeholder {
-        color: rgba(255, 255, 255, 0.6) !important;
+        color: #95a5a6 !important;
     }
 
     /* زر البحث */
     .stButton>button {
-        background: linear-gradient(45deg, #ffffff, #cccccc) !important;
-        color: #1a1a1a !important;
+        background: linear-gradient(45deg, #3498db, #2980b9) !important;
+        color: #ffffff !important;
         border: none !important;
         border-radius: 50px !important;
         padding: 1rem 3rem !important;
@@ -119,11 +123,13 @@ st.markdown("""
         font-weight: 600 !important;
         transition: all 0.3s ease;
         margin-top: 1rem;
+        box-shadow: 0 5px 20px rgba(52, 152, 219, 0.3);
     }
 
     .stButton>button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 30px rgba(255, 255, 255, 0.3);
+        transform: translateY(-3px);
+        box-shadow: 0 15px 40px rgba(52, 152, 219, 0.4);
+        background: linear-gradient(45deg, #2980b9, #3498db) !important;
     }
 
     /* شريط المؤقت العلوي */
@@ -132,18 +138,19 @@ st.markdown("""
         top: 0;
         left: 0;
         right: 0;
-        background: rgba(0, 0, 0, 0.9);
+        background: rgba(255, 255, 255, 0.95);
         backdrop-filter: blur(10px);
         padding: 0.5rem;
         z-index: 1000;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        border-bottom: 1px solid rgba(44, 62, 80, 0.1);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
     }
 
     .timer-text {
-        color: #ffffff;
+        color: #2c3e50;
         text-align: center;
         font-size: 0.9rem;
-        font-weight: 300;
+        font-weight: 400;
     }
 
     /* زر دخول المشرف */
@@ -151,8 +158,8 @@ st.markdown("""
         position: fixed;
         bottom: 2rem;
         right: 2rem;
-        background: rgba(255, 255, 255, 0.1) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        background: rgba(255, 255, 255, 0.9) !important;
+        border: 1px solid rgba(44, 62, 80, 0.2) !important;
         border-radius: 50% !important;
         width: 60px !important;
         height: 60px !important;
@@ -162,11 +169,13 @@ st.markdown("""
         cursor: pointer !important;
         transition: all 0.3s ease !important;
         backdrop-filter: blur(10px);
+        box-shadow: 0 5px 20px rgba(0, 0, 0, 0.1);
     }
 
     .admin-button:hover {
-        background: rgba(255, 255, 255, 0.2) !important;
+        background: rgba(52, 152, 219, 0.9) !important;
         transform: scale(1.1);
+        box-shadow: 0 10px 30px rgba(52, 152, 219, 0.3);
     }
 
     /* نتائج البحث */
@@ -176,25 +185,28 @@ st.markdown("""
     }
 
     .book-card {
-        background: rgba(255, 255, 255, 0.05);
+        background: rgba(255, 255, 255, 0.95);
         border-radius: 15px;
         padding: 1.5rem;
         margin-bottom: 1rem;
-        border: 1px solid rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(44, 62, 80, 0.1);
         transition: all 0.3s ease;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
     }
 
     .book-card:hover {
-        background: rgba(255, 255, 255, 0.08);
-        transform: translateY(-2px);
+        background: #ffffff;
+        transform: translateY(-3px);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
     }
 
     /* رسائل الحالة */
     .stSuccess, .stError, .stWarning, .stInfo {
-        background: rgba(255, 255, 255, 0.1) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        background: rgba(255, 255, 255, 0.9) !important;
+        border: 1px solid rgba(44, 62, 80, 0.1) !important;
         border-radius: 10px !important;
-        color: #ffffff !important;
+        color: #2c3e50 !important;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.05);
     }
 
     /* إخفاء العناصر الافتراضية */
@@ -461,8 +473,8 @@ if st.session_state.search_results:
         with st.container():
             st.markdown(f"""
             <div class="book-card">
-                <h3 style="color: #ffffff; margin-bottom: 0.5rem;">📚 {result['file_name']}</h3>
-                <p style="color: #cccccc; font-size: 0.9rem; margin-bottom: 0.5rem;">
+                <h3 style="color: #2c3e50; margin-bottom: 0.5rem;">📚 {result['file_name']}</h3>
+                <p style="color: #7f8c8d; font-size: 0.9rem; margin-bottom: 0.5rem;">
                     📅 {result['date'].strftime('%Y-%m-%d')} | 📊 {result['size'] / 1024 / 1024:.1f} ميجابايت
                 </p>
             </div>
@@ -529,19 +541,19 @@ if 'show_admin_login' in st.session_state and st.session_state.show_admin_login:
     with st.container():
         st.markdown("""
         <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
-                    background: rgba(0, 0, 0, 0.8); z-index: 2000; 
+                    background: rgba(255, 255, 255, 0.9); z-index: 2000; 
                     display: flex; align-items: center; justify-content: center;">
         """, unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.markdown("""
-            <div style="background: rgba(255, 255, 255, 0.1); padding: 2rem; 
-                        border-radius: 15px; backdrop-filter: blur(10px); 
-                        border: 1px solid rgba(255, 255, 255, 0.2);">
+            <div style="background: #ffffff; padding: 2rem; 
+                        border-radius: 15px; box-shadow: 0 15px 35px rgba(0, 0, 0, 0.1); 
+                        border: 1px solid rgba(44, 62, 80, 0.1);">
             """, unsafe_allow_html=True)
             
-            st.markdown("<h3 style='text-align: center; color: white;'>🔐 دخول المشرف</h3>", unsafe_allow_html=True)
+            st.markdown("<h3 style='text-align: center; color: #2c3e50;'>🔐 دخول المشرف</h3>", unsafe_allow_html=True)
             
             admin_password = st.text_input("كلمة المرور", type="password", key="admin_pass")
             
@@ -570,26 +582,16 @@ if status == "READY_TO_ENTER":
     with st.container():
         st.markdown("""
         <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
-                    background: rgba(0, 0, 0, 0.9); z-index: 3000; 
+                    background: rgba(255, 255, 255, 0.95); z-index: 3000; 
                     display: flex; align-items: center; justify-content: center;">
         """, unsafe_allow_html=True)
         
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.markdown("""
-            <div style="background: rgba(255, 255, 255, 0.1); padding: 3rem; 
-                        border-radius: 20px; backdrop-filter: blur(10px); 
-                        border: 1px solid rgba(255, 255, 255, 0.2); text-align: center;">
+            <div style="background: #ffffff; padding: 3rem; 
+                        border-radius: 20px; box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1); 
+                        border: 1px solid rgba(44, 62, 80, 0.1); text-align: center;">
             """, unsafe_allow_html=True)
             
-            st.markdown("<h2 style='color: white; margin-bottom: 2rem;'>🚪 الدخول إلى المكتبة</h2>", unsafe_allow_html=True)
-            
-            if st.button("دخول", use_container_width=True, type="primary"):
-                state.locked = True
-                state.current_user_token = st.session_state.user_token
-                state.last_activity = time.time()
-                st.rerun()
-            
-            st.markdown("</div>", unsafe_allow_html=True)
-        
-        st.markdown("</div>", unsafe_allow_html=True)
+            st.markdown("<h2 style='color: #2c3e50; margin-bottom: 2rem;'>🚪 الدخول إلى المكتبة</h2>", unsafe_allow_html
