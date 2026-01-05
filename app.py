@@ -36,174 +36,27 @@ st.markdown("""
     h1, h2, h3 {
         font-family: 'Amiri', serif;
     }
-    
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    .stApp {
-        background-color: #f8f9fa;
-    }
-    
-    /* الهيدر الأكاديمي */
-    .library-header {
-        background: linear-gradient(to bottom, #2c3e50 0%, #34495e 100%);
-        padding: 1.5rem 0;
-        margin-bottom: 2rem;
-        border-bottom: 3px solid #95a5a6;
-    }
-    
-    .library-title {
-        color: #ecf0f1;
-        font-size: 2.5rem;
-        font-weight: 700;
-        text-align: center;
-        margin: 0;
-        letter-spacing: 1px;
-    }
-    
-    .library-subtitle {
-        color: #bdc3c7;
-        text-align: center;
-        font-size: 1rem;
-        margin-top: 0.5rem;
-        font-weight: 300;
-    }
-    
-    /* شريط المعلومات */
-    .info-bar {
-        background: white;
-        border: 1px solid #dee2e6;
-        border-radius: 4px;
-        padding: 0.8rem 1.5rem;
-        margin-bottom: 1.5rem;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    
-    /* صندوق البحث الأكاديمي */
-    .search-container {
-        background: white;
-        border: 2px solid #dee2e6;
-        border-radius: 2px;
-        padding: 2rem;
-        margin-bottom: 2rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.08);
-    }
-    
-    .search-label {
-        color: #2c3e50;
-        font-size: 1.1rem;
-        font-weight: 500;
-        margin-bottom: 1rem;
-        display: block;
-    }
-    
-    /* بطاقة الكتاب - تصميم أرشيفي */
-    .book-item {
-        background: white;
-        border: 1px solid #e0e0e0;
-        border-right: 4px solid #7f8c8d;
-        padding: 1.5rem;
-        margin-bottom: 1rem;
-        transition: all 0.2s ease;
-    }
-    
-    .book-item:hover {
-        border-right-color: #34495e;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    
-    .book-number {
-        color: #95a5a6;
-        font-size: 0.85rem;
-        font-weight: 500;
-        margin-bottom: 0.5rem;
-    }
-    
-    .book-main-title {
-        color: #2c3e50;
-        font-size: 1.4rem;
-        font-weight: 700;
-        margin-bottom: 0.8rem;
-        line-height: 1.4;
-    }
-    
-    .book-metadata {
-        color: #7f8c8d;
-        font-size: 1rem;
-        margin-bottom: 1rem;
-        padding: 0.7rem 0;
-        border-top: 1px solid #ecf0f1;
-        border-bottom: 1px solid #ecf0f1;
-        font-weight: 500;
-    }
-    
-    .book-metadata span {
-        margin-left: 1.5rem;
-    }
-    
-    .book-description {
-        color: #5a6c7d;
-        font-size: 1rem;
-        line-height: 1.8;
-        margin-bottom: 1.5rem;
-        text-align: justify;
-    }
-    
-    /* منطقة الأزرار */
-    .action-buttons-area {
-        background: #f8f9fa;
-        border-top: 2px solid #e9ecef;
-        padding: 1.5rem;
-        margin-top: 1rem;
-        border-radius: 4px;
-    }
-    
-    /* الأزرار الكلاسيكية */
+
+    /* تحسين التفاعل مع الأزرار */
     .stButton>button {
-        background: #34495e !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 4px !important;
-        padding: 0.85rem 1.5rem !important;
-        font-weight: 600 !important;
-        font-size: 1.1rem !important;
-        transition: all 0.3s ease !important;
-        letter-spacing: 0.3px !important;
+        background-color: #4CAF50; /* لون أخضر */
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-size: 16px;
+        transition: all 0.3s ease-in-out;
     }
-    
     .stButton>button:hover {
-        background: #2c3e50 !important;
-        box-shadow: 0 4px 8px rgba(0,0,0,0.25) !important;
-        transform: translateY(-2px) !important;
+        background-color: #45a049; /* تغير اللون عند التحويم */
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        transform: scale(1.05);
     }
-    
     .stButton>button:active {
-        transform: translateY(0) !important;
+        background-color: #388E3C; /* تغير اللون عند الضغط */
     }
-    
-    /* أزرار الإجراءات الرئيسية */
-    div[data-testid="column"]:has(button) {
-        padding: 0.3rem;
-    }
-    
-    /* تحسين مظهر أزرار التحميل */
-    .stDownloadButton>button {
-        background: #27ae60 !important;
-        font-weight: 600 !important;
-        font-size: 1.05rem !important;
-        padding: 0.8rem 1.5rem !important;
-    }
-    
-    .stDownloadButton>button:hover {
-        background: #229954 !important;
-        box-shadow: 0 4px 8px rgba(39, 174, 96, 0.3) !important;
-    }
-    
-    /* مدخلات النصوص - تحسين التباين */
+
+    /* إضافة تأثيرات على الحقول */
     .stTextInput>div>div>input {
         border: 2px solid #7f8c8d !important;
         border-radius: 4px !important;
@@ -213,184 +66,76 @@ st.markdown("""
         color: #000000 !important;
         font-weight: 500 !important;
     }
-    
+
     .stTextInput>div>div>input::placeholder {
         color: #95a5a6 !important;
         opacity: 0.7 !important;
     }
-    
+
     .stTextInput>div>div>input:focus {
         border-color: #2c3e50 !important;
         background: white !important;
         box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1) !important;
         color: #000000 !important;
     }
-    
-    /* صندوق النتائج */
-    .results-header {
-        background: #ecf0f1;
-        border-left: 4px solid #34495e;
-        padding: 1rem 1.5rem;
-        margin-bottom: 1.5rem;
-    }
-    
-    .results-title {
-        color: #2c3e50;
-        font-size: 1.3rem;
-        font-weight: 600;
-        margin: 0;
-    }
-    
-    .results-stats {
-        color: #7f8c8d;
-        font-size: 0.9rem;
-        margin-top: 0.3rem;
-    }
-    
-    /* شاشة الانتظار */
-    .waiting-container {
-        background: white;
-        border: 2px solid #e74c3c;
-        padding: 3rem;
-        text-align: center;
-        margin: 3rem auto;
-        max-width: 600px;
-    }
-    
-    .waiting-title {
-        color: #c0392b;
-        font-size: 1.8rem;
-        font-weight: 600;
-        margin-bottom: 1rem;
-    }
-    
-    .waiting-text {
-        color: #7f8c8d;
-        font-size: 1.1rem;
-        line-height: 1.6;
-    }
-    
-    .timer-display {
-        background: #ecf0f1;
-        border: 1px solid #bdc3c7;
-        border-radius: 2px;
-        padding: 1.5rem;
-        margin: 1.5rem 0;
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #34495e;
-    }
-    
-    /* شاشة الترحيب */
-    .welcome-box {
-        background: white;
-        border: 1px solid #dee2e6;
-        padding: 3rem;
-        text-align: center;
-        margin: 2rem auto;
-        max-width: 700px;
-    }
-    
-    .welcome-title {
-        color: #2c3e50;
-        font-size: 2.2rem;
-        font-weight: 700;
-        margin-bottom: 1rem;
-    }
-    
-    .welcome-description {
-        color: #7f8c8d;
-        font-size: 1.1rem;
-        line-height: 1.8;
-        margin-bottom: 2rem;
-    }
-    
-    .status-indicator {
+
+    /* إضافة تلميحات للمساعدة في التفاعل */
+    .tooltip {
+        position: relative;
         display: inline-block;
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        background: #27ae60;
-        margin-left: 0.5rem;
-        animation: pulse 2s infinite;
+        cursor: pointer;
     }
-    
-    @keyframes pulse {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
-    }
-    
-    /* شارة الحالة */
-    .badge {
-        display: inline-block;
-        padding: 0.4rem 1rem;
-        background: #ecf0f1;
-        color: #2c3e50;
-        border-radius: 2px;
-        font-size: 0.85rem;
-        font-weight: 500;
-        border: 1px solid #bdc3c7;
-    }
-    
-    .badge-admin {
-        background: #34495e;
-        color: white;
-        border-color: #2c3e50;
-    }
-    
-    /* صندوق إنهاء الجلسة للمشرف */
-    .admin-control-box {
-        background: #fff3cd;
-        border: 2px solid #ffc107;
-        border-radius: 4px;
-        padding: 1.5rem;
-        margin: 1.5rem 0;
-    }
-    
-    /* لوحة التحكم */
-    .admin-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
-        border-radius: 10px;
-        margin-bottom: 2rem;
+
+    .tooltip .tooltiptext {
+        visibility: hidden;
+        width: 120px;
+        background-color: #6c757d;
+        color: #fff;
         text-align: center;
-        color: white;
-    }
-    
-    .duplicate-card {
-        background: white;
-        border: 2px solid #e74c3c;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
-    
-    .file-info {
-        background: #f8f9fa;
-        padding: 1rem;
         border-radius: 5px;
-        margin: 0.5rem 0;
-        border-left: 4px solid #3498db;
+        padding: 5px;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%; /* مكان التلميح */
+        left: 50%;
+        margin-left: -60px;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+
+    .tooltip:hover .tooltiptext {
+        visibility: visible;
+        opacity: 1;
     }
     
-    .warning-box {
-        background: #fff3cd;
-        border: 2px solid #ffc107;
-        border-radius: 8px;
-        padding: 1.5rem;
-        margin: 1rem 0;
+    /* تحسين التنسيق العام */
+    .library-header {
+        background: linear-gradient(to bottom, #2c3e50 0%, #34495e 100%);
+        padding: 2rem 0;
+        margin-bottom: 2rem;
+        border-bottom: 3px solid #95a5a6;
     }
-    
-    .success-box {
-        background: #d4edda;
-        border: 2px solid #28a745;
-        border-radius: 8px;
-        padding: 1rem;
-        margin: 1rem 0;
+
+    .library-title {
+        color: #ecf0f1;
+        font-size: 3rem;
+        font-weight: 700;
+        text-align: center;
+        margin: 0;
+        letter-spacing: 1px;
+    }
+
+    .library-subtitle {
+        color: #bdc3c7;
+        text-align: center;
+        font-size: 1.2rem;
+        margin-top: 0.5rem;
+        font-weight: 300;
     }
 </style>
 """, unsafe_allow_html=True)
+
+
 
 # --- ⚙️ إعدادات النظام ---
 TIMEOUT_SECONDS = 180
