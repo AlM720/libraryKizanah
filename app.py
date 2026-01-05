@@ -18,88 +18,191 @@ nest_asyncio.apply()
 
 # إعداد الصفحة
 st.set_page_config(
-    page_title="باحث الكتب - المكتبة الرقمية",
+    page_title="المكتبة الرقمية",
     page_icon="📚",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# --- تصميم CSS احترافي يشبه محركات البحث مثل Google لكن بألوان عادية ---
+# --- تصميم CSS احترافي مستوحى من المواقع الثلاثة ---
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Product+Sans:wght@400;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@300;400;500;700&display=swap');
     
     * {
-        font-family: 'Product Sans', sans-serif;
-    }
-    
-    body {
-        background-color: #FFFFFF;
-    }
-    
-    .stApp {
-        max-width: 800px;
-        margin: 0 auto;
-        padding-top: 10vh;
+        font-family: 'Tajawal', sans-serif;
     }
     
     h1, h2, h3 {
-        font-family: 'Product Sans', sans-serif;
+        font-family: 'Amiri', serif;
+    }
+
+    /* الخلفية الرئيسية */
+    .stApp {
+        background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
+        color: #ffffff;
+    }
+
+    /* الهيدر الرئيسي */
+    .main-header {
+        background: rgba(0, 0, 0, 0.8);
+        backdrop-filter: blur(10px);
+        padding: 2rem 0;
+        margin-bottom: 3rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* عنوان المكتبة */
+    .library-title {
+        color: #ffffff;
+        font-size: 3.5rem;
+        font-weight: 700;
         text-align: center;
+        margin: 0;
+        letter-spacing: 2px;
+        background: linear-gradient(45deg, #ffffff, #cccccc);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }
 
-    /* تصميم حقل البحث مثل Google */
-    .stTextInput > div > div > input {
-        border: 1px solid #DFE1E5 !important;
-        border-radius: 24px !important;
-        padding: 13px 20px !important;
-        font-size: 16px !important;
-        background: white !important;
-        color: #202124 !important;
-        width: 100% !important;
-        box-shadow: 0 1px 6px 0 rgba(32,33,36,0.28);
-        transition: box-shadow 0.3s;
-    }
-
-    .stTextInput > div > div > input:hover,
-    .stTextInput > div > div > input:focus {
-        box-shadow: 0 1px 6px 0 rgba(32,33,36,0.28);
-        border-color: #DFE1E5 !important;
-    }
-
-    /* تصميم الأزرار مثل Google */
-    .stButton > button {
-        background-color: #F8F9FA;
-        color: #3C4043;
-        border: 1px solid #F8F9FA;
-        border-radius: 4px;
-        padding: 10px 20px;
-        font-size: 14px;
-        margin: 11px 4px;
-        transition: all 0.3s;
-    }
-    
-    .stButton > button:hover {
-        border: 1px solid #DADCE0;
-        box-shadow: 0 1px 1px rgba(0,0,0,.1);
-    }
-
-    /* شعار عادي بدون ألوان جوجل */
-    .google-logo {
+    /* الشعار الفرعي */
+    .library-subtitle {
+        color: #aaaaaa;
         text-align: center;
-        margin-bottom: 20px;
-        font-size: 64px;
-        font-weight: bold;
-        color: #000000;
+        font-size: 1.3rem;
+        margin-top: 1rem;
+        font-weight: 300;
     }
 
-    /* إخفاء عناصر غير مرغوبة */
+    /* حاوية البحث المركزية */
+    .search-container {
+        max-width: 800px;
+        margin: 0 auto 2rem auto;
+        padding: 2rem;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 20px;
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* حقل البحث */
+    .stTextInput>div>div>input {
+        background: rgba(255, 255, 255, 0.1) !important;
+        border: 2px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 50px !important;
+        padding: 1.5rem 2rem !important;
+        font-size: 1.3rem !important;
+        color: #ffffff !important;
+        font-weight: 400 !important;
+        transition: all 0.3s ease;
+    }
+
+    .stTextInput>div>div>input:focus {
+        border-color: #ffffff !important;
+        background: rgba(255, 255, 255, 0.15) !important;
+        box-shadow: 0 0 30px rgba(255, 255, 255, 0.2) !important;
+    }
+
+    .stTextInput>div>div>input::placeholder {
+        color: rgba(255, 255, 255, 0.6) !important;
+    }
+
+    /* زر البحث */
+    .stButton>button {
+        background: linear-gradient(45deg, #ffffff, #cccccc) !important;
+        color: #1a1a1a !important;
+        border: none !important;
+        border-radius: 50px !important;
+        padding: 1rem 3rem !important;
+        font-size: 1.2rem !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease;
+        margin-top: 1rem;
+    }
+
+    .stButton>button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 30px rgba(255, 255, 255, 0.3);
+    }
+
+    /* شريط المؤقت العلوي */
+    .timer-bar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        background: rgba(0, 0, 0, 0.9);
+        backdrop-filter: blur(10px);
+        padding: 0.5rem;
+        z-index: 1000;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .timer-text {
+        color: #ffffff;
+        text-align: center;
+        font-size: 0.9rem;
+        font-weight: 300;
+    }
+
+    /* زر دخول المشرف */
+    .admin-button {
+        position: fixed;
+        bottom: 2rem;
+        right: 2rem;
+        background: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 50% !important;
+        width: 60px !important;
+        height: 60px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        cursor: pointer !important;
+        transition: all 0.3s ease !important;
+        backdrop-filter: blur(10px);
+    }
+
+    .admin-button:hover {
+        background: rgba(255, 255, 255, 0.2) !important;
+        transform: scale(1.1);
+    }
+
+    /* نتائج البحث */
+    .search-results {
+        max-width: 1000px;
+        margin: 2rem auto;
+    }
+
+    .book-card {
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 15px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: all 0.3s ease;
+    }
+
+    .book-card:hover {
+        background: rgba(255, 255, 255, 0.08);
+        transform: translateY(-2px);
+    }
+
+    /* رسائل الحالة */
+    .stSuccess, .stError, .stWarning, .stInfo {
+        background: rgba(255, 255, 255, 0.1) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        border-radius: 10px !important;
+        color: #ffffff !important;
+    }
+
+    /* إخفاء العناصر الافتراضية */
+    #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
-
-
 
 # --- ⚙️ إعدادات النظام ---
 TIMEOUT_SECONDS = 180
@@ -132,6 +235,12 @@ if 'admin_mode' not in st.session_state:
 
 if 'current_page' not in st.session_state:
     st.session_state.current_page = 0
+
+if 'search_results' not in st.session_state:
+    st.session_state.search_results = []
+
+if 'search_time' not in st.session_state:
+    st.session_state.search_time = None
 
 # --- دالة تنظيف الذاكرة ---
 def clear_session_data():
@@ -290,71 +399,197 @@ def get_first_page_preview(message_id):
         st.error(f"خطأ في إنشاء المعاينة: {e}")
         return None
 
-# دوال لوحة التحكم
-def clean_description(text):
-    """إزالة الروابط من النص"""
-    if not text:
-        return "لا يوجد وصف متاح لهذا الكتاب."
-    
-    # إزالة الروابط HTTP/HTTPS
-    text = re.sub(r'https?://\S+', '', text)
-    # إزالة الروابط www
-    text = re.sub(r'www\.\S+', '', text)
-    # إزالة الروابط t.me
-    text = re.sub(r't\.me/\S+', '', text)
-    # إزالة مسافات زائدة
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    return text if text else "لا يوجد وصف متاح لهذا الكتاب."
+# ==========================================
+# الواجهة الرئيسية
+# ==========================================
 
-# ==========================================
-# لوحة التحكم للمشرف (بدون المكررات)
-# ==========================================
-if st.session_state.admin_mode:
+# شريط المؤقت العلوي
+if status == "USER_ACCESS":
     st.markdown("""
-    <div class="admin-header">
-        <div style="font-size: 2.5rem; font-weight: 700;">🗂️ لوحة تحكم المشرف</div>
-        <p style="font-size: 1.1rem; margin-top: 0.5rem;">مرحباً بالمشرف</p>
+    <div class="timer-bar">
+        <div class="timer-text">
+            ⏰ الجلسة نشطة | الوقت المتبقي: {} ثانية
+        </div>
     </div>
-    """, unsafe_allow_html=True)
-    
-    col_info1, col_info2 = st.columns([3, 1])
-    
-    with col_info1:
-        st.info("🔒 **الجلسات الأخرى متوقفة** - أنت الوحيد المسموح له بالدخول حالياً")
-    
-    with col_info2:
-        if st.button("🚪 خروج", use_container_width=True):
-            st.session_state.admin_mode = False
-            st.rerun()
-    
-    st.markdown("---")
-    
-    # هنا يمكن إضافة ميزات أخرى للمشرف إذا لزم الأمر، لكن حالياً فارغة بناءً على الطلب
+    """.format(int(TIMEOUT_SECONDS - (time.time() - state.last_activity))), unsafe_allow_html=True)
 
-# ==========================================
-# الواجهة الرئيسية المشابهة لـ Google
-# ==========================================
-else:
-    st.markdown("""
-    <div class="google-logo">
-        باحث الكتب
-    </div>
-    """, unsafe_allow_html=True)
+# الهيدر الرئيسي
+st.markdown("""
+<div class="main-header">
+    <h1 class="library-title">المكتبة الرقمية</h1>
+    <p class="library-subtitle">اكتشف عالم المعرفة بين يديك</p>
+</div>
+""", unsafe_allow_html=True)
 
-    query = st.text_input("", placeholder="ابحث عن كتاب...", key="search_query")
+# حاوية البحث المركزية
+st.markdown('<div class="search-container">', unsafe_allow_html=True)
 
-    def perform_search():
-        st.session_state.search_results = search_books_async(query)
+# حقل البحث
+search_query = st.text_input(
+    "",
+    placeholder="ابحث عن كتاب...",
+    label_visibility="collapsed"
+)
 
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        st.button("بحث في الكتب", on_click=perform_search)
-    with col_btn2:
-        if st.button("دخول المشرف"):
-            admin_password = st.text_input("كلمة مرور المشرف", type="password")
-            if admin_password == st.secrets["admin_password"]:
-                st.session_state.admin_mode = True
+# زر البحث
+col1, col2, col3 = st.columns([1, 2, 1])
+with col2:
+    if st.button("🔍 بحث", use_container_width=True):
+        if search_query:
+            with st.spinner("جاري البحث..."):
+                results = search_books_async(search_query)
+                st.session_state.search_results = results
+                st.session_state.search_time = time.time()
+                st.session_state.current_page = 0
+        else:
+            st.warning("يرجى إدخال كلمة بحث")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# عرض النتائج
+if st.session_state.search_results:
+    st.markdown('<div class="search-results">', unsafe_allow_html=True)
+    
+    results = st.session_state.search_results
+    total_pages = (len(results) + ITEMS_PER_PAGE - 1) // ITEMS_PER_PAGE
+    
+    # عرض النتائج الحالية
+    start_idx = st.session_state.current_page * ITEMS_PER_PAGE
+    end_idx = min(start_idx + ITEMS_PER_PAGE, len(results))
+    
+    for result in results[start_idx:end_idx]:
+        with st.container():
+            st.markdown(f"""
+            <div class="book-card">
+                <h3 style="color: #ffffff; margin-bottom: 0.5rem;">📚 {result['file_name']}</h3>
+                <p style="color: #cccccc; font-size: 0.9rem; margin-bottom: 0.5rem;">
+                    📅 {result['date'].strftime('%Y-%m-%d')} | 📊 {result['size'] / 1024 / 1024:.1f} ميجابايت
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            col1, col2, col3 = st.columns([1, 1, 1])
+            
+            with col1:
+                if st.button("⬇️ تحميل", key=f"download_{result['id']}"):
+                    buffer, file_name = download_book_to_memory(result['id'])
+                    if buffer:
+                        st.download_button(
+                            label="💾 حفظ الملف",
+                            data=buffer,
+                            file_name=file_name,
+                            mime="application/octet-stream",
+                            key=f"save_{result['id']}"
+                        )
+            
+            with col2:
+                if st.button("👁️ معاينة", key=f"preview_{result['id']}"):
+                    preview = get_first_page_preview(result['id'])
+                    if preview:
+                        st.image(preview, caption="الصفحة الأولى", use_column_width=True)
+                    else:
+                        st.error("لا توجد معاينة متاحة")
+            
+            with col3:
+                if st.button("📄 عدد الصفحات", key=f"pages_{result['id']}"):
+                    pages = get_pdf_page_count(result['id'])
+                    if pages:
+                        st.info(f"📖 عدد الصفحات: {pages}")
+                    else:
+                        st.error("لا يمكن حساب عدد الصفحات")
+    
+    # التنقل بين الصفحات
+    if total_pages > 1:
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            prev, page_info, next_btn = st.columns([1, 2, 1])
+            with prev:
+                if st.session_state.current_page > 0:
+                    if st.button("⬅️ السابق"):
+                        st.session_state.current_page -= 1
+                        st.rerun()
+            
+            with page_info:
+                st.write(f"الصفحة {st.session_state.current_page + 1} من {total_pages}")
+            
+            with next_btn:
+                if st.session_state.current_page < total_pages - 1:
+                    if st.button("التالي ➡️"):
+                        st.session_state.current_page += 1
+                        st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# زر دخول المشرف
+if st.button("⚙️", key="admin_button", help="دخول المشرف"):
+    st.session_state.show_admin_login = True
+
+# نافذة تسجيل دخول المشرف
+if 'show_admin_login' in st.session_state and st.session_state.show_admin_login:
+    with st.container():
+        st.markdown("""
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+                    background: rgba(0, 0, 0, 0.8); z-index: 2000; 
+                    display: flex; align-items: center; justify-content: center;">
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown("""
+            <div style="background: rgba(255, 255, 255, 0.1); padding: 2rem; 
+                        border-radius: 15px; backdrop-filter: blur(10px); 
+                        border: 1px solid rgba(255, 255, 255, 0.2);">
+            """, unsafe_allow_html=True)
+            
+            st.markdown("<h3 style='text-align: center; color: white;'>🔐 دخول المشرف</h3>", unsafe_allow_html=True)
+            
+            admin_password = st.text_input("كلمة المرور", type="password", key="admin_pass")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("دخول"):
+                    if admin_password == st.secrets["admin_password"]:
+                        st.session_state.is_admin = True
+                        st.session_state.admin_mode = True
+                        st.session_state.show_admin_login = False
+                        st.rerun()
+                    else:
+                        st.error("كلمة مرور خاطئة")
+            
+            with col2:
+                if st.button("إلغاء"):
+                    st.session_state.show_admin_login = False
+                    st.rerun()
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# نافذة دخول المستخدم
+if status == "READY_TO_ENTER":
+    with st.container():
+        st.markdown("""
+        <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
+                    background: rgba(0, 0, 0, 0.9); z-index: 3000; 
+                    display: flex; align-items: center; justify-content: center;">
+        """, unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.markdown("""
+            <div style="background: rgba(255, 255, 255, 0.1); padding: 3rem; 
+                        border-radius: 20px; backdrop-filter: blur(10px); 
+                        border: 1px solid rgba(255, 255, 255, 0.2); text-align: center;">
+            """, unsafe_allow_html=True)
+            
+            st.markdown("<h2 style='color: white; margin-bottom: 2rem;'>🚪 الدخول إلى المكتبة</h2>", unsafe_allow_html=True)
+            
+            if st.button("دخول", use_container_width=True, type="primary"):
+                state.locked = True
+                state.current_user_token = st.session_state.user_token
+                state.last_activity = time.time()
                 st.rerun()
-            else:
-                st.error("كلمة المرور غير صحيحة")
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
