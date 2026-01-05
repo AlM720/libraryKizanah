@@ -11,6 +11,7 @@ import re
 from PyPDF2 import PdfReader
 import fitz  # PyMuPDF
 from PIL import Image
+from collections import defaultdict
 
 # تفعيل تعدد المهام لبيئة Streamlit
 nest_asyncio.apply()
@@ -23,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- تصميم CSS احترافي شبيه بجوجل وتطبيق تراث ---
+# --- تصميم CSS احترافي يشبه المكتبات الأكاديمية ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Tajawal:wght@300;400;500;700&display=swap');
@@ -32,325 +33,115 @@ st.markdown("""
         font-family: 'Tajawal', sans-serif;
     }
     
-    html, body, [data-testid="stAppViewContainer"] {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-        min-height: 100vh;
-    }
-    
-    /* إخفاء عناصر streamlit الافتراضية */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    
-    /* تصميم الصفحة الرئيسية */
-    .main-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        min-height: 70vh;
-        padding: 2rem;
-    }
-    
-    .logo-container {
-        text-align: center;
-        margin-bottom: 2rem;
-        animation: fadeInDown 0.8s ease-out;
-    }
-    
-    .main-logo {
-        font-size: 5rem;
-        margin-bottom: 1rem;
-        filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
-    }
-    
-    .main-title {
+    h1, h2, h3 {
         font-family: 'Amiri', serif;
+    }
+
+    /* تحسين التفاعل مع الأزرار */
+    .stButton>button {
+        background-color: #4CAF50; /* لون أخضر */
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 10px 20px;
+        font-size: 16px;
+        transition: all 0.3s ease-in-out;
+    }
+    .stButton>button:hover {
+        background-color: #45a049; /* تغير اللون عند التحويم */
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        transform: scale(1.05);
+    }
+    .stButton>button:active {
+        background-color: #388E3C; /* تغير اللون عند الضغط */
+    }
+
+    /* إضافة تأثيرات على الحقول */
+    .stTextInput>div>div>input {
+        border: 2px solid #7f8c8d !important;
+        border-radius: 4px !important;
+        padding: 0.9rem 1.2rem !important;
+        font-size: 1.2rem !important;
+        background: white !important;
+        color: #000000 !important;
+        font-weight: 500 !important;
+    }
+
+    .stTextInput>div>div>input::placeholder {
+        color: #95a5a6 !important;
+        opacity: 0.7 !important;
+    }
+
+    .stTextInput>div>div>input:focus {
+        border-color: #2c3e50 !important;
+        background: white !important;
+        box-shadow: 0 0 0 3px rgba(44, 62, 80, 0.1) !important;
+        color: #000000 !important;
+    }
+
+    /* إضافة تلميحات للمساعدة في التفاعل */
+    .tooltip {
+        position: relative;
+        display: inline-block;
+        cursor: pointer;
+    }
+
+    .tooltip .tooltiptext {
+        visibility: hidden;
+        width: 120px;
+        background-color: #6c757d;
+        color: #fff;
+        text-align: center;
+        border-radius: 5px;
+        padding: 5px;
+        position: absolute;
+        z-index: 1;
+        bottom: 125%; /* مكان التلميح */
+        left: 50%;
+        margin-left: -60px;
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+
+    .tooltip:hover .tooltiptext {
+        visibility: visible;
+        opacity: 1;
+    }
+    
+    /* تحسين التنسيق العام */
+    .library-header {
+        background: linear-gradient(to bottom, #2c3e50 0%, #34495e 100%);
+        padding: 2rem 0;
+        margin-bottom: 2rem;
+        border-bottom: 3px solid #95a5a6;
+    }
+
+    .library-title {
+        color: #ecf0f1;
         font-size: 3rem;
         font-weight: 700;
-        color: #2c3e50;
+        text-align: center;
         margin: 0;
-        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        letter-spacing: 1px;
     }
-    
-    .main-subtitle {
+
+    .library-subtitle {
+        color: #bdc3c7;
+        text-align: center;
         font-size: 1.2rem;
-        color: #7f8c8d;
         margin-top: 0.5rem;
-    }
-    
-    /* صندوق البحث الرئيسي */
-    .search-container {
-        width: 100%;
-        max-width: 650px;
-        margin: 2rem auto;
-        animation: fadeInUp 0.8s ease-out;
-    }
-    
-    .stTextInput > div > div > input {
-        border: 2px solid #e0e0e0 !important;
-        border-radius: 50px !important;
-        padding: 1.2rem 2rem !important;
-        font-size: 1.1rem !important;
-        background: white !important;
-        color: #2c3e50 !important;
-        font-weight: 500 !important;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1) !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: #3498db !important;
-        box-shadow: 0 4px 20px rgba(52, 152, 219, 0.3) !important;
-        outline: none !important;
-    }
-    
-    .stTextInput > div > div > input::placeholder {
-        color: #95a5a6 !important;
-        font-weight: 400 !important;
-    }
-    
-    /* أزرار البحث */
-    .search-buttons {
-        display: flex;
-        justify-content: center;
-        gap: 1rem;
-        margin-top: 1.5rem;
-    }
-    
-    .stButton > button {
-        background: white !important;
-        color: #5f6368 !important;
-        border: 1px solid #f0f0f0 !important;
-        border-radius: 4px !important;
-        padding: 0.7rem 1.5rem !important;
-        font-size: 0.95rem !important;
-        font-weight: 500 !important;
-        transition: all 0.2s ease !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
-    }
-    
-    .stButton > button:hover {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15) !important;
-        border-color: #dadce0 !important;
-        transform: translateY(-1px);
-    }
-    
-    .stButton > button:active {
-        transform: translateY(0);
-    }
-    
-    /* أزرار التحكم في الأعلى */
-    .control-buttons {
-        position: fixed;
-        top: 1rem;
-        left: 1rem;
-        display: flex;
-        gap: 0.5rem;
-        z-index: 1000;
-        flex-direction: column;
-    }
-    
-    .control-btn {
-        background: white !important;
-        color: #5f6368 !important;
-        border: 1px solid #e0e0e0 !important;
-        border-radius: 8px !important;
-        padding: 0.5rem 1rem !important;
-        font-size: 0.85rem !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1) !important;
-        min-width: 120px;
-    }
-    
-    .control-btn:hover {
-        box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important;
-        background: #f8f9fa !important;
-    }
-    
-    /* عداد الجلسة */
-    .session-timer {
-        position: fixed;
-        top: 1rem;
-        right: 1rem;
-        background: white;
-        padding: 0.8rem 1.2rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        font-weight: 500;
-        color: #2c3e50;
-        z-index: 1000;
-        min-width: 150px;
-        text-align: center;
-    }
-    
-    .timer-warning {
-        background: #fff3cd !important;
-        border: 1px solid #ffc107;
-    }
-    
-    .timer-danger {
-        background: #f8d7da !important;
-        border: 1px solid #dc3545;
-        animation: pulse 1s infinite;
-    }
-    
-    /* نتائج البحث */
-    .result-card {
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        transition: all 0.3s ease;
-        border: 1px solid #f0f0f0;
-    }
-    
-    .result-card:hover {
-        box-shadow: 0 4px 16px rgba(0,0,0,0.12);
-        transform: translateY(-2px);
-    }
-    
-    .result-title {
-        font-size: 1.3rem;
-        font-weight: 600;
-        color: #1a73e8;
-        margin-bottom: 0.5rem;
-        font-family: 'Amiri', serif;
-    }
-    
-    .result-meta {
-        color: #5f6368;
-        font-size: 0.9rem;
-        margin: 0.3rem 0;
-    }
-    
-    .result-description {
-        color: #3c4043;
-        line-height: 1.6;
-        margin-top: 0.8rem;
-    }
-    
-    /* رسائل التنبيه */
-    .alert-box {
-        background: white;
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin: 2rem auto;
-        max-width: 600px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        text-align: center;
-        border: 2px solid #e8f4fd;
-    }
-    
-    .alert-icon {
-        font-size: 3rem;
-        margin-bottom: 1rem;
-    }
-    
-    /* الرسوم المتحركة */
-    @keyframes fadeInDown {
-        from {
-            opacity: 0;
-            transform: translateY(-30px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    @keyframes fadeInUp {
-        from {
-            opacity: 0;
-            transform: translateY(30px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-    
-    @keyframes pulse {
-        0%, 100% {
-            transform: scale(1);
-        }
-        50% {
-            transform: scale(1.02);
-        }
-    }
-    
-    /* تصميم متجاوب للجوال */
-    @media (max-width: 768px) {
-        .main-logo {
-            font-size: 3.5rem;
-        }
-        
-        .main-title {
-            font-size: 2rem;
-        }
-        
-        .main-subtitle {
-            font-size: 1rem;
-        }
-        
-        .search-container {
-            max-width: 90%;
-        }
-        
-        .control-buttons {
-            position: static;
-            flex-direction: row;
-            justify-content: center;
-            margin: 1rem 0;
-        }
-        
-        .session-timer {
-            position: static;
-            margin: 1rem auto;
-            width: fit-content;
-        }
-        
-        .stTextInput > div > div > input {
-            padding: 1rem 1.5rem !important;
-            font-size: 1rem !important;
-        }
-    }
-    
-    /* صفحات النتائج */
-    .results-header {
-        background: white;
-        padding: 1.5rem 2rem;
-        border-radius: 12px;
-        margin-bottom: 2rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    }
-    
-    .results-count {
-        color: #70757a;
-        font-size: 0.95rem;
-    }
-    
-    /* أزرار التحميل */
-    .download-btn {
-        background: #1a73e8 !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 8px !important;
-        padding: 0.7rem 1.5rem !important;
-        font-weight: 500 !important;
-    }
-    
-    .download-btn:hover {
-        background: #1557b0 !important;
+        font-weight: 300;
     }
 </style>
 """, unsafe_allow_html=True)
+
+
 
 # --- ⚙️ إعدادات النظام ---
 TIMEOUT_SECONDS = 180
 ITEMS_PER_PAGE = 5
 
-required_secrets = ["api_id", "api_hash", "session_string", "channel_id", "admin_password"]
+required_secrets = ["api_id", "api_hash", "session_string", "channel_id", "admin_password", "key"]
 if not all(key in st.secrets for key in required_secrets):
     st.error("⚠️ خطأ: تأكد من إعداد ملف secrets.toml بكامل البيانات.")
     st.stop()
@@ -372,11 +163,17 @@ if 'user_token' not in st.session_state:
 if 'is_admin' not in st.session_state:
     st.session_state.is_admin = False
 
+if 'admin_mode' not in st.session_state:
+    st.session_state.admin_mode = False
+
+if 'duplicate_groups' not in st.session_state:
+    st.session_state.duplicate_groups = []
+
+if 'scan_completed' not in st.session_state:
+    st.session_state.scan_completed = False
+
 if 'current_page' not in st.session_state:
     st.session_state.current_page = 0
-
-if 'search_query' not in st.session_state:
-    st.session_state.search_query = ""
 
 # --- دالة تنظيف الذاكرة ---
 def clear_session_data():
@@ -389,6 +186,9 @@ def clear_session_data():
 # --- 🔐 منطق الحارس ---
 def check_access():
     current_time = time.time()
+    
+    if st.session_state.admin_mode:
+        return "ADMIN_PANEL"
     
     if state.locked and (current_time - state.last_activity > TIMEOUT_SECONDS):
         state.locked = False
@@ -406,6 +206,8 @@ def check_access():
         return "READY_TO_ENTER"
         
     return False
+
+status = check_access()
 
 # --- دوال الاتصال ---
 api_id = int(st.secrets["api_id"])
@@ -530,313 +332,280 @@ def get_first_page_preview(message_id):
         st.error(f"خطأ في إنشاء المعاينة: {e}")
         return None
 
+# دوال لوحة التحكم
 def clean_description(text):
     """إزالة الروابط من النص"""
     if not text:
         return "لا يوجد وصف متاح لهذا الكتاب."
     
+    # إزالة الروابط HTTP/HTTPS
     text = re.sub(r'https?://\S+', '', text)
+    # إزالة الروابط www
     text = re.sub(r'www\.\S+', '', text)
+    # إزالة الروابط t.me
     text = re.sub(r't\.me/\S+', '', text)
+    # إزالة مسافات زائدة
     text = re.sub(r'\s+', ' ', text).strip()
     
     return text if text else "لا يوجد وصف متاح لهذا الكتاب."
 
-def format_file_size(size_bytes):
-    """تحويل حجم الملف إلى صيغة قابلة للقراءة"""
-    for unit in ['بايت', 'كيلوبايت', 'ميجابايت', 'جيجابايت']:
-        if size_bytes < 1024.0:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024.0
-    return f"{size_bytes:.1f} تيرابايت"
-
-# ==========================================
-# الواجهة الرئيسية
-# ==========================================
-
-status = check_access()
-
-# عرض أزرار التحكم في الأعلى (للجوال في الوسط)
-col_control = st.container()
-with col_control:
-    if status in ["USER_ACCESS", "ADMIN_ACCESS"]:
-        # للشاشات الكبيرة: في اليسار
-        # للجوال: في الوسط
-        cols = st.columns([1, 1, 1])
+async def scan_for_duplicates():
+    client = await get_client()
+    files_by_size = defaultdict(list)
+    
+    try:
+        entity = await client.get_entity(channel_id)
         
-        with cols[0]:
-            if st.button("🚪 إنهاء الجلسة", key="end_session", help="إنهاء جلسة البحث الحالية"):
-                state.locked = False
-                state.current_user_token = None
-                st.session_state.is_admin = False
-                clear_session_data()
-                st.rerun()
+        async for message in client.iter_messages(entity):
+            if message.file:
+                file_info = {
+                    'id': message.id,
+                    'name': message.file.name or 'بدون اسم',
+                    'size': message.file.size,
+                    'date': message.date,
+                    'caption': message.text or ''
+                }
+                files_by_size[message.file.size].append(file_info)
         
-        with cols[1]:
-            # عرض عداد الوقت
-            if state.locked:
-                remaining = TIMEOUT_SECONDS - int(time.time() - state.last_activity)
-                minutes = remaining // 60
-                seconds = remaining % 60
-                
-                if remaining < 30:
-                    timer_class = "timer-danger"
-                    timer_icon = "⚠️"
-                elif remaining < 60:
-                    timer_class = "timer-warning"
-                    timer_icon = "⏰"
-                else:
-                    timer_class = ""
-                    timer_icon = "⏱️"
-                
-                st.markdown(f"""
-                <div class="session-timer {timer_class}">
-                    {timer_icon} {minutes:02d}:{seconds:02d}
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if remaining <= 0:
-                    st.rerun()
+        potential_duplicates = []
+        for size, files in files_by_size.items():
+            if len(files) > 1:
+                potential_duplicates.append(files)
         
-        with cols[2]:
-            # زر دخول المشرف (فقط إذا لم يكن مشرف بالفعل)
-            if not st.session_state.is_admin:
-                with st.expander("🔐 دخول المشرف"):
-                    admin_pass = st.text_input("كلمة المرور", type="password", key="admin_login")
-                    if st.button("دخول"):
-                        if admin_pass == st.secrets["admin_password"]:
-                            st.session_state.is_admin = True
-                            st.success("✅ تم تسجيل الدخول كمشرف")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("❌ كلمة مرور خاطئة")
+        return potential_duplicates
+        
+    except Exception as e:
+        st.error(f"خطأ في المسح: {e}")
+        return []
+    finally:
+        await client.disconnect()
 
-# ==========================================
-# حالات الوصول
-# ==========================================
+def has_sequential_numbers(name1, name2):
+    """التحقق من وجود أرقام متسلسلة في الأسماء"""
+    numbers1 = re.findall(r'\d+', name1)
+    numbers2 = re.findall(r'\d+', name2)
+    
+    if numbers1 and numbers2:
+        for n1 in numbers1:
+            for n2 in numbers2:
+                if abs(int(n1) - int(n2)) == 1:
+                    return True
+    
+    patterns = [
+        r'(جزء|الجزء|part|vol|volume)\s*\d+',
+        r'\d+\s*(جزء|الجزء|part|vol|volume)',
+    ]
+    
+    for pattern in patterns:
+        if re.search(pattern, name1, re.IGNORECASE) and re.search(pattern, name2, re.IGNORECASE):
+            return True
+    
+    return False
 
-if status == False:
-    # شخص آخر يستخدم النظام
-    st.markdown("""
-    <div class="alert-box">
-        <div class="alert-icon">⏳</div>
-        <h2 style="color: #e67e22;">المكتبة مشغولة حالياً</h2>
-        <p style="font-size: 1.1rem; color: #7f8c8d;">
-            هناك باحث آخر يستخدم المكتبة الآن.<br>
-            يرجى الانتظار حتى ينتهي من جلسته.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+def are_names_similar(name1, name2):
+    """مقارنة الأسماء لمعرفة التشابه"""
+    name1_clean = re.sub(r'\.(pdf|epub|rar|zip)$', '', name1.lower())
+    name2_clean = re.sub(r'\.(pdf|epub|rar|zip)$', '', name2.lower())
     
-    # زر دخول المشرف للتحكم
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        with st.expander("🔐 دخول المشرف للتحكم"):
-            admin_pass = st.text_input("كلمة المرور", type="password", key="admin_override")
-            col_a, col_b = st.columns(2)
-            with col_a:
-                if st.button("دخول وإغلاق الجلسة", use_container_width=True):
-                    if admin_pass == st.secrets["admin_password"]:
-                        state.locked = False
-                        state.current_user_token = None
-                        st.session_state.is_admin = True
-                        st.success("✅ تم إغلاق الجلسة السابقة")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("❌ كلمة مرور خاطئة")
-            with col_b:
-                if st.button("تحديث", use_container_width=True):
-                    st.rerun()
+    name1_no_nums = re.sub(r'\d+', '', name1_clean)
+    name2_no_nums = re.sub(r'\d+', '', name2_clean)
+    
+    name1_no_nums = re.sub(r'[^\w\s]', '', name1_no_nums).strip()
+    name2_no_nums = re.sub(r'[^\w\s]', '', name2_no_nums).strip()
+    
+    if name1_no_nums == name2_no_nums and name1_no_nums:
+        return True
+    
+    words1 = set(name1_no_nums.split())
+    words2 = set(name2_no_nums.split())
+    
+    if words1 and words2:
+        common_words = words1.intersection(words2)
+        similarity = len(common_words) / max(len(words1), len(words2))
+        return similarity >= 0.7
+    
+    return False
 
-elif status == "READY_TO_ENTER":
-    # الصفحة الرئيسية - محرك البحث
-    st.markdown("""
-    <div class="main-container">
-        <div class="logo-container">
-            <div class="main-logo">📚</div>
-            <h1 class="main-title">المكتبة الرقمية</h1>
-            <p class="main-subtitle">ابحث في آلاف الكتب والمراجع العلمية</p>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+def classify_duplicate_group(group):
+    """تصنيف المجموعة المكررة: تلقائي أم يحتاج تأكيد"""
+    if len(group) < 2:
+        return "single", []
     
-    # صندوق البحث
-    st.markdown('<div class="search-container">', unsafe_allow_html=True)
+    names = [f['name'] for f in group]
     
-    search_query = st.text_input(
-        "ابحث عن كتاب",
-        placeholder="ابحث عن كتاب، مؤلف، أو موضوع...",
-        label_visibility="collapsed",
-        key="main_search"
-    )
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            if has_sequential_numbers(names[i], names[j]):
+                return "manual", group
     
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
-        search_button = st.button("🔍 بحث", use_container_width=True, type="primary")
+    all_similar = True
+    for i in range(len(names) - 1):
+        if not are_names_similar(names[i], names[i + 1]):
+            all_similar = False
+            break
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    if all_similar:
+        sorted_group = sorted(group, key=lambda x: x['date'], reverse=True)
+        keep_file = sorted_group[0]
+        delete_files = sorted_group[1:]
+        return "auto", delete_files
     
-    if search_button and search_query:
-        state.locked = True
-        state.current_user_token = st.session_state.user_token
-        state.last_activity = time.time()
-        st.session_state.search_query = search_query
-        st.rerun()
-    elif search_button and not search_query:
-        st.warning("⚠️ الرجاء إدخال كلمة بحث")
+    return "manual", group
 
-elif status in ["USER_ACCESS", "ADMIN_ACCESS"]:
-    # صفحة البحث والنتائج
-    st.markdown("""
-    <div class="results-header">
-        <h2 style="margin: 0; color: #2c3e50; font-family: 'Amiri', serif;">📚 نتائج البحث</h2>
-    </div>
-    """, unsafe_allow_html=True)
+async def auto_delete_duplicates(files_to_delete):
+    """حذف الملفات المكررة تلقائياً"""
+    deleted_count = 0
+    failed_count = 0
     
-    # صندوق بحث جديد
-    col_search, col_btn = st.columns([4, 1])
-    with col_search:
-        new_search = st.text_input(
-            "بحث جديد",
-            value=st.session_state.search_query,
-            placeholder="ابحث عن كتاب آخر...",
-            label_visibility="collapsed",
-            key="results_search"
-        )
-    with col_btn:
-        if st.button("🔍", use_container_width=True):
-            if new_search:
-                st.session_state.search_query = new_search
-                st.session_state.current_page = 0
-                clear_session_data()
-                state.last_activity = time.time()
-                st.rerun()
-    
-    # تنفيذ البحث
-    if st.session_state.search_query:
-        if 'search_results' not in st.session_state or not st.session_state.search_results:
-            with st.spinner(f"🔍 جاري البحث عن: {st.session_state.search_query}"):
-                start_time = time.time()
-                results = search_books_async(st.session_state.search_query)
-                search_time = time.time() - start_time
-                
-                st.session_state.search_results = results
-                st.session_state.search_time = search_time
-                state.last_activity = time.time()
-        
-        results = st.session_state.search_results
-        
-        if results:
-            st.markdown(f"""
-            <p class="results-count">
-                تم العثور على {len(results)} نتيجة في {st.session_state.search_time:.2f} ثانية
-            </p>
-            """, unsafe_allow_html=True)
-            
-            # عرض النتائج مع pagination
-            total_pages = (len(results) - 1) // ITEMS_PER_PAGE + 1
-            start_idx = st.session_state.current_page * ITEMS_PER_PAGE
-            end_idx = min(start_idx + ITEMS_PER_PAGE, len(results))
-            
-            for result in results[start_idx:end_idx]:
-                with st.container():
-                    st.markdown(f"""
-                    <div class="result-card">
-                        <div class="result-title">📖 {result['file_name']}</div>
-                        <div class="result-meta">
-                            📊 الحجم: {format_file_size(result['size'])} | 
-                            📅 التاريخ: {result['date'].strftime('%Y-%m-%d')}
-                        </div>
-                        <div class="result-description">
-                            {clean_description(result['caption'])[:200]}...
-                        </div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    col1, col2, col3 = st.columns([1, 1, 2])
-                    
-                    with col1:
-                        if st.button(f"📥 تحميل", key=f"dl_{result['id']}"):
-                            buffer, file_name = download_book_to_memory(result['id'])
-                            if buffer:
-                                st.download_button(
-                                    label="💾 حفظ الملف",
-                                    data=buffer,
-                                    file_name=file_name,
-                                    mime="application/pdf",
-                                    key=f"save_{result['id']}"
-                                )
-                                buffer.close()
-                    
-                    with col2:
-                        if result['file_name'].lower().endswith('.pdf'):
-                            if st.button(f"📄 عدد الصفحات", key=f"pages_{result['id']}"):
-                                pages = get_pdf_page_count(result['id'])
-                                if pages:
-                                    st.info(f"📄 عدد الصفحات: {pages}")
-                    
-                    with col3:
-                        if result['file_name'].lower().endswith('.pdf'):
-                            if st.button(f"👁️ معاينة", key=f"preview_{result['id']}"):
-                                img = get_first_page_preview(result['id'])
-                                if img:
-                                    st.image(img, caption="الصفحة الأولى", use_container_width=True)
-                    
-                    st.markdown("<hr style='margin: 1.5rem 0; border: none; border-top: 1px solid #e0e0e0;'>", unsafe_allow_html=True)
-                    state.last_activity = time.time()
-            
-            # أزرار التنقل بين الصفحات
-            if total_pages > 1:
-                st.markdown("<br>", unsafe_allow_html=True)
-                cols = st.columns([1, 2, 1, 2, 1])
-                
-                with cols[1]:
-                    if st.session_state.current_page > 0:
-                        if st.button("⏮️ السابق", use_container_width=True):
-                            st.session_state.current_page -= 1
-                            state.last_activity = time.time()
-                            st.rerun()
-                
-                with cols[2]:
-                    st.markdown(f"""
-                    <div style="text-align: center; padding: 0.7rem; background: white; 
-                         border-radius: 8px; border: 1px solid #e0e0e0;">
-                        صفحة {st.session_state.current_page + 1} من {total_pages}
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                with cols[3]:
-                    if st.session_state.current_page < total_pages - 1:
-                        if st.button("التالي ⏭️", use_container_width=True):
-                            st.session_state.current_page += 1
-                            state.last_activity = time.time()
-                            st.rerun()
-        
+    for file in files_to_delete:
+        success = await delete_file(file['id'])
+        if success:
+            deleted_count += 1
         else:
+            failed_count += 1
+    
+    return deleted_count, failed_count
+
+async def delete_file(message_id):
+    client = await get_client()
+    try:
+        entity = await client.get_entity(channel_id)
+        await client.delete_messages(entity, message_id)
+        return True
+    except Exception as e:
+        st.error(f"خطأ في الحذف: {e}")
+        return False
+    finally:
+        await client.disconnect()
+
+# ==========================================
+# لوحة التحكم
+# ==========================================
+if st.session_state.admin_mode:
+    st.markdown("""
+    <div class="admin-header">
+        <div style="font-size: 2.5rem; font-weight: 700;">🗂️ إدارة الملفات المكررة</div>
+        <p style="font-size: 1.1rem; margin-top: 0.5rem;">نظام الكشف والحذف الذكي</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_info1, col_info2 = st.columns([3, 1])
+    
+    with col_info1:
+        st.info("🔒 **الجلسات الأخرى متوقفة** - أنت الوحيد المسموح له بالدخول حالياً")
+    
+    with col_info2:
+        if st.button("🚪 خروج", use_container_width=True):
+            st.session_state.admin_mode = False
+            st.session_state.duplicate_groups = []
+            st.session_state.scan_completed = False
+            st.session_state.current_page = 0
+            st.rerun()
+    
+    st.markdown("---")
+    
+    if not st.session_state.scan_completed:
+        col1, col2, col3 = st.columns([1, 2, 1])
+        
+        with col2:
             st.markdown("""
-            <div class="alert-box">
-                <div class="alert-icon">🔍</div>
-                <h2 style="color: #7f8c8d;">لم يتم العثور على نتائج</h2>
-                <p style="font-size: 1.1rem; color: #95a5a6;">
-                    لم نعثر على أي كتب تطابق بحثك.<br>
-                    جرّب استخدام كلمات مختلفة أو أكثر عمومية.
-                </p>
+            <div class="warning-box" style="text-align: center;">
+                <h3 style="color: #856404;">🔍 ابدأ عملية المسح</h3>
+                <p>سيتم فحص جميع الملفات في القناة للبحث عن المكررات</p>
             </div>
             """, unsafe_allow_html=True)
             
-            col1, col2, col3 = st.columns([1, 2, 1])
-            with col2:
-                if st.button("🔄 بحث جديد", use_container_width=True):
-                    st.session_state.search_query = ""
-                    clear_session_data()
-                    state.locked = False
-                    state.current_user_token = None
+            if st.button("🔍 بدء المسح الآن", use_container_width=True, type="primary"):
+                with st.spinner("⏳ جاري مسح القناة..."):
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    duplicates = loop.run_until_complete(scan_for_duplicates())
+                    loop.close()
+                    
+                    st.session_state.duplicate_groups = duplicates
+                    st.session_state.scan_completed = True
+                    st.session_state.current_page = 0
                     st.rerun()
-
-# تحديث تلقائي للعداد
-if status in ["USER_ACCESS", "ADMIN_ACCESS"] and state.locked:
-    time.sleep(1)
-    st.rerun()
+    else:
+        if len(st.session_state.duplicate_groups) == 0:
+            st.markdown("""
+            <div class="success-box" style="text-align: center;">
+                <h2 style="color: #155724;">✅ رائع!</h2>
+                <p style="font-size: 1.2rem;">لا توجد ملفات مكررة في القناة</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button("🔄 إعادة المسح", use_container_width=True):
+                st.session_state.scan_completed = False
+                st.session_state.duplicate_groups = []
+                st.session_state.current_page = 0
+                st.rerun()
+        else:
+            # تصنيف المجموعات
+            auto_delete_groups = []
+            manual_groups = []
+            
+            for group in st.session_state.duplicate_groups:
+                classification, data = classify_duplicate_group(group)
+                if classification == "auto":
+                    auto_delete_groups.append(data)
+                elif classification == "manual":
+                    manual_groups.append(group)
+            
+            total_auto_files = sum(len(g) for g in auto_delete_groups)
+            
+            st.success(f"✓ تم العثور على **{len(st.session_state.duplicate_groups)}** مجموعة من الملفات المكررة")
+            
+            col_stat1, col_stat2 = st.columns(2)
+            with col_stat1:
+                st.info(f"🤖 **{total_auto_files}** ملف يمكن حذفه تلقائياً")
+            with col_stat2:
+                st.warning(f"👤 **{len(manual_groups)}** مجموعة تحتاج مراجعة يدوية")
+            
+            if auto_delete_groups:
+                st.markdown("---")
+                st.markdown("### 🤖 الحذف التلقائي الذكي")
+                st.write("تم اكتشاف ملفات مكررة بنفس الاسم والحجم (بدون أرقام متسلسلة). يمكن حذفها تلقائياً وإبقاء أحدث نسخة.")
+                
+                col_auto1, col_auto2, col_auto3 = st.columns([1, 1, 1])
+                with col_auto2:
+                    if st.button(f"🗑️ حذف {total_auto_files} ملف تلقائياً", use_container_width=True, type="primary"):
+                        with st.spinner("جاري الحذف التلقائي..."):
+                            loop = asyncio.new_event_loop()
+                            asyncio.set_event_loop(loop)
+                            
+                            all_files_to_delete = [f for group in auto_delete_groups for f in group]
+                            deleted, failed = loop.run_until_complete(auto_delete_duplicates(all_files_to_delete))
+                            
+                            loop.close()
+                            
+                            if deleted > 0:
+                                st.success(f"✓ تم حذف {deleted} ملف بنجاح!")
+                                if failed > 0:
+                                    st.warning(f"⚠️ فشل حذف {failed} ملف")
+                                
+                                st.session_state.duplicate_groups = manual_groups
+                                st.session_state.current_page = 0
+                                time.sleep(2)
+                                st.rerun()
+            
+            if not manual_groups:
+                st.markdown("---")
+                st.markdown("""
+                <div class="success-box" style="text-align: center;">
+                    <h2 style="color: #155724;">✅ انتهى!</h2>
+                    <p style="font-size: 1.2rem;">لا توجد ملفات مكررة تحتاج مراجعة</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if st.button("🔄 إعادة المسح", use_container_width=True):
+                    st.session_state.scan_completed = False
+                    st.session_state.duplicate_groups = []
+                    st.session_state.current_page = 0
+                    st.rerun()
+            else:
+                st.markdown("---")
+                st.markdown("### 👤 المجموعات التي تحتاج مراجعة يدوية")
+                st.caption("هذه المجموعات تحتوي على أرقام متسلسلة (قد تكون أجزاء مختلفة)")
+                
+                if st.button("🔄 إعادة المسح", use_container_width=True):
