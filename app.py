@@ -24,7 +24,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# --- تصميم CSS احترافي يشبه محركات البحث مثل Google ---
+# --- تصميم CSS احترافي يشبه محركات البحث مثل Google لكن بألوان عادية ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Product+Sans:wght@400;700&display=swap');
@@ -84,21 +84,14 @@ st.markdown("""
         box-shadow: 0 1px 1px rgba(0,0,0,.1);
     }
 
-    /* شعار مثل Google */
+    /* شعار عادي بدون ألوان جوجل */
     .google-logo {
         text-align: center;
         margin-bottom: 20px;
         font-size: 64px;
         font-weight: bold;
-        color: #4285F4;
+        color: #000000;
     }
-    
-    .google-logo span:nth-child(1) { color: #4285F4; }
-    .google-logo span:nth-child(2) { color: #EA4335; }
-    .google-logo span:nth-child(3) { color: #FBBC05; }
-    .google-logo span:nth-child(4) { color: #4285F4; }
-    .google-logo span:nth-child(5) { color: #34A853; }
-    .google-logo span:nth-child(6) { color: #EA4335; }
 
     /* إخفاء عناصر غير مرغوبة */
     footer {visibility: hidden;}
@@ -315,21 +308,53 @@ def clean_description(text):
     return text if text else "لا يوجد وصف متاح لهذا الكتاب."
 
 # ==========================================
+# لوحة التحكم للمشرف (بدون المكررات)
+# ==========================================
+if st.session_state.admin_mode:
+    st.markdown("""
+    <div class="admin-header">
+        <div style="font-size: 2.5rem; font-weight: 700;">🗂️ لوحة تحكم المشرف</div>
+        <p style="font-size: 1.1rem; margin-top: 0.5rem;">مرحباً بالمشرف</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    col_info1, col_info2 = st.columns([3, 1])
+    
+    with col_info1:
+        st.info("🔒 **الجلسات الأخرى متوقفة** - أنت الوحيد المسموح له بالدخول حالياً")
+    
+    with col_info2:
+        if st.button("🚪 خروج", use_container_width=True):
+            st.session_state.admin_mode = False
+            st.rerun()
+    
+    st.markdown("---")
+    
+    # هنا يمكن إضافة ميزات أخرى للمشرف إذا لزم الأمر، لكن حالياً فارغة بناءً على الطلب
+
+# ==========================================
 # الواجهة الرئيسية المشابهة لـ Google
 # ==========================================
-st.markdown("""
-<div class="google-logo">
-    <span>ب</span><span>ا</span><span>ح</span><span>ث</span><span> </span><span>ا</span><span>ل</span><span>ك</span><span>ت</span><span>ب</span>
-</div>
-""", unsafe_allow_html=True)
+else:
+    st.markdown("""
+    <div class="google-logo">
+        باحث الكتب
+    </div>
+    """, unsafe_allow_html=True)
 
-query = st.text_input("", placeholder="ابحث عن كتاب...", key="search_query")
+    query = st.text_input("", placeholder="ابحث عن كتاب...", key="search_query")
 
-def perform_search():
-    st.session_state.search_results = search_books_async(query)
+    def perform_search():
+        st.session_state.search_results = search_books_async(query)
 
-col_btn1, col_btn2 = st.columns(2)
-with col_btn1:
-    st.button("بحث في الكتب", on_click=perform_search)
-with col_btn2:
-    st.button("أشعر بالحظ", on_click=lambda: st.write("ميزة قادمة قريباً..."))
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        st.button("بحث في الكتب", on_click=perform_search)
+    with col_btn2:
+        if st.button("دخول المشرف"):
+            admin_password = st.text_input("كلمة مرور المشرف", type="password")
+            if admin_password == st.secrets["admin_password"]:
+                st.session_state.admin_mode = True
+                st.rerun()
+            else:
+                st.error("كلمة المرور غير صحيحة")
