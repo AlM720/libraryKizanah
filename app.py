@@ -317,3 +317,214 @@ def render_book_card(row):
                 st.success("✅ جاهز!")
             else:
                 st.error("❌ فشل التحميل")
+
+
+# ═══════════════════════════════════════════════════════════
+# واجهة المستخدم - الصق هذا الجزء بعد الجزء 1
+# ═══════════════════════════════════════════════════════════
+
+clean_old_sessions()
+can_start, max_sessions, current_sessions = can_start_session()
+current_time = time.time()
+
+# شريط الأدوات
+toolbar_html = f"""
+<div class="toolbar">
+    <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <span style="font-weight: 600; font-size: 1.1rem;">📚 المكتبة الرقمية</span>
+    </div>
+    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+"""
+if st.session_state.show_counter:
+    usage_percent = (current_sessions / max_sessions * 100) if max_sessions > 0 else 0
+    color = "#10b981" if usage_percent < 50 else "#f59e0b" if usage_percent < 80 else "#ef4444"
+    toolbar_html += f'<span class="counter-badge" style="background: {color};">🔴 {current_sessions}/{max_sessions}</span>'
+if st.session_state.is_admin:
+    toolbar_html += '<span class="counter-badge" style="background: #f59e0b;">👑 مشرف</span>'
+toolbar_html += "</div></div>"
+st.markdown(toolbar_html, unsafe_allow_html=True)
+
+# أزرار التحكم
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    if st.button("▶️ بدء", use_container_width=True):
+        if can_start or st.session_state.is_admin:
+            start_session()
+            st.success("✅ تم بدء الجلسة!")
+            st.rerun()
+        else:
+            st.error(f"⚠️ الجلسات ممتلئة ({current_sessions}/{max_sessions})")
+with col2:
+    if st.button("⏹️ إنهاء", use_container_width=True):
+        if st.session_state.session_id:
+            end_session()
+            st.success("✅ تم إنهاء الجلسة")
+            st.rerun()
+with col3:
+    if st.button("🔢 عداد", use_container_width=True):
+        st.session_state.show_counter = not st.session_state.show_counter
+        st.rerun()
+with col4:
+    if not st.session_state.is_admin:
+        if st.button("👤 مشرف", use_container_width=True):
+            pass
+    else:
+        if st.button("🚪 خروج", use_container_width=True):
+            st.session_state.is_admin = False
+            st.rerun()
+
+# تسجيل دخول المشرف
+if not st.session_state.is_admin:
+    with st.expander("🔐 دخول المشرف"):
+        admin_pass = st.text_input("كلمة السر:", type="password", key="admin_login")
+        if st.button("دخول", key="admin_login_btn"):
+            if admin_pass == ADMIN_PASSWORD:
+                st.session_state.is_admin = True
+                st.success("مرحباً أيها المشرف! 👑")
+                st.rerun()
+            else:
+                st.error("كلمة سر خاطئة!")
+
+# لوحة المشرف
+if st.session_state.is_admin:
+    with st.expander("🎛️ لوحة التحكم", expanded=True):
+        st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
+        col_a1, col_a2, col_a3 = st.columns(3)
+        with col_a1:
+            st.metric("الجلسات النشطة", current_sessions)
+        with col_a2:
+            st.metric("الحد الأقصى", max_sessions)
+        with col_a3:
+            usage = (current_sessions / max_sessions * 100) if max_sessions > 0 else 0
+            st.metric("الاستخدام", f"{usage:.0f}%")
+        if current_sessions > 0:
+            st.warning(f"⚠️ يوجد {current_sessions} جلسة نشطة")
+            if st.button("🚫 إنهاء جميع الجلسات", type="primary"):
+                st.session_state.active_sessions = {}
+                st.success("✅ تم إنهاء جميع الجلسات")
+                st.rerun()
+        st.markdown("### 🤖 إحصائيات البوتات")
+        for idx in range(len(BOT_TOKENS)):
+            recent = [r for r in st.session_state.bot_requests[idx] if current_time - r < 60]
+            st.text(f"البوت {idx + 1}: {len(recent)} طلب في الدقيقة الأخيرة")
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# منطقة البحث
+if not st.session_state.session_id and not st.session_state.is_admin:
+    if not can_start:
+        wait_time = SESSION_TIMEOUT // 60
+        st.markdown(f"""
+        <div class="wait-message">
+            <h2 style="color: #667eea; margin-bottom: 1rem;">⏳ يرجى الانتظار</h2>
+            <p style="font-size: 1.1rem; color: #4b5563;">جميع الجلسات مشغولة حالياً</p>
+            <p style="color: #6b7280; margin-top: 1rem;">الحد الحالي: {max_sessions} جلسة متزامنة</p>
+            <p style="color: #6b7280;">يتم التحديث كل {wait_time} دقيقة</p>
+            <div style="margin-top: 2rem;">
+                <span class="counter-badge" style="font-size: 1rem;">{current_sessions}/{max_sessions}</span>
+            </div>
+            <p style="font-size: 0.9rem; color: #9ca3af; margin-top: 1.5rem;">💡 الحد الأقصى يتغير تلقائياً حسب الاستخدام</p>
+        </div>
+        """, unsafe_allow_html=True)
+        time.sleep(3)
+        st.rerun()
+    else:
+        st.markdown('<h1 class="main-title">ابحث في مكتبتك الرقمية</h1>', unsafe_allow_html=True)
+        st.info("🔔 يرجى بدء جلسة أولاً للبحث والتحميل")
+else:
+    # معلومات الجلسة
+    if st.session_state.session_id:
+        elapsed = int(current_time - st.session_state.session_start_time)
+        remaining = SESSION_TIMEOUT - elapsed
+        progress = elapsed / SESSION_TIMEOUT
+        st.markdown(f"""
+        <div class="session-info">
+            ✅ جلسة نشطة • التحميلات: {st.session_state.downloads_count} • الوقت المتبقي: {remaining // 60} دقيقة
+        </div>
+        """, unsafe_allow_html=True)
+        st.progress(progress)
+    
+    st.markdown('<h1 class="main-title">🔍 ابحث في مكتبتك الرقمية</h1>', unsafe_allow_html=True)
+    
+    # الفلاتر المتقدمة
+    with st.expander("⚙️ فلاتر متقدمة", expanded=False):
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            formats = get_available_formats()
+            format_options = [('all', 'جميع الصيغ')] + [(f[0], f"{f[0].upper()} ({f[1]})") for f in formats[:10]]
+            selected_format = st.selectbox(
+                "الصيغة",
+                options=[f[0] for f in format_options],
+                format_func=lambda x: dict(format_options)[x],
+                key="format_filter"
+            )
+        with col2:
+            min_size = st.number_input("الحجم الأدنى (MB)", min_value=0.0, value=0.0, step=1.0, key="min_size")
+        with col3:
+            max_size = st.number_input("الحجم الأقصى (MB)", min_value=0.0, value=0.0, step=1.0, key="max_size")
+        with col4:
+            limit = st.selectbox("عدد النتائج", [20, 50, 100], index=0, key="limit")
+    
+    # صندوق البحث
+    col_search, col_btn = st.columns([4, 1])
+    with col_search:
+        search_query = st.text_input(
+            "",
+            placeholder="🔍 ابحث عن كتاب... (مثال: فيزياء كلاسيكية)",
+            key="search_input",
+            label_visibility="collapsed"
+        )
+    with col_btn:
+        search_clicked = st.button("بحث", type="primary", use_container_width=True, key="search_btn")
+    
+    # اقتراحات تلقائية
+    if search_query and len(search_query) >= 2 and not search_clicked:
+        suggestions = get_autocomplete_suggestions(search_query)
+        if suggestions:
+            st.info(f"💡 اقتراحات: {' • '.join(suggestions[:3])}")
+    
+    # عمليات البحث الشائعة
+    popular = get_popular_searches(5)
+    if popular and not search_query:
+        st.markdown("**🔥 الأكثر بحثاً:** " + " • ".join([f"`{s}`" for s in popular]))
+    
+    # تنفيذ البحث
+    if (search_query and len(search_query) >= 2) or search_clicked:
+        filters = {
+            'format': selected_format if selected_format != 'all' else None,
+            'min_size': min_size if min_size > 0 else None,
+            'max_size': max_size if max_size > 0 else None
+        }
+        add_to_search_history(search_query)
+        
+        with st.spinner("🔍 جاري البحث..."):
+            results = search_books_advanced(search_query, filters, limit)
+            st.session_state.search_results = results
+            update_session_activity('search')
+        
+        # عرض النتائج
+        if results:
+            st.success(f"✨ تم العثور على {len(results)} نتيجة")
+            
+            # خيارات الترتيب
+            sort_option = st.radio(
+                "ترتيب حسب:",
+                ["الصلة", "الاسم", "الحجم", "الصفحات"],
+                horizontal=True,
+                key="sort_option"
+            )
+            
+            # ترتيب النتائج
+            if sort_option == "الاسم":
+                results = sorted(results, key=lambda x: x.get('file_name', ''))
+            elif sort_option == "الحجم":
+                results = sorted(results, key=lambda x: x.get('size_mb', 0), reverse=True)
+            elif sort_option == "الصفحات":
+                results = sorted(results, key=lambda x: x.get('pages') or 0, reverse=True)
+            
+            # عرض النتائج
+            for row in results:
+                render_book_card(row)
+        else:
+            st.warning("😔 لم يتم العثور على نتائج. جرّب كلمات مختلفة أو استخدم الفلاتر.")
+            if search_query:
+                st.info("💡 جرّب: كلمات أقصر، إزالة التشكيل، أو استخدام صيغة مختلفة")
