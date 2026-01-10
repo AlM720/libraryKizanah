@@ -33,6 +33,7 @@ st.markdown("""
     .counter-badge {background: #667eea;color: white;padding: 0.3rem 0.8rem;border-radius: 20px;font-size: 0.85rem;font-weight: 600;}
     .session-info {background: #f0fdf4;border: 1px solid #86efac;padding: 1rem;border-radius: 8px;margin: 1rem 0;text-align: center;color: #166534;}
     .admin-panel {background: #fef3c7;border: 2px solid #fbbf24;padding: 1.5rem;border-radius: 12px;margin: 2rem 0;}
+    .db-status {background: #dbeafe;border: 1px solid #3b82f6;padding: 0.5rem 1rem;border-radius: 8px;margin: 0.5rem 0;font-size: 0.9rem;color: #1e40af;}
     @media (max-width: 768px) {
         .main-title {font-size: 1.8rem;margin-top: 4rem;}
         .toolbar {flex-wrap: wrap;gap: 0.5rem;padding: 0.6rem;}
@@ -40,39 +41,165 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ═══════════════════════════════════════════════════════════════
+# ⚙️ الإعدادات
+# ═══════════════════════════════════════════════════════════════
+
 try:
     BOT_TOKENS = [st.secrets["bot1"], st.secrets["bot2"], st.secrets["bot3"]]
     CHANNEL_ID = st.secrets["channelid"]
     ADMIN_PASSWORD = st.secrets["password"]
+    
+    # رابط Google Drive (أضف هذا في secrets.toml)
+    GDRIVE_FILE_ID = st.secrets.get("gdrive_file_id", "")
+    
 except:
     st.error("⚠️ خطأ في تحميل الإعدادات")
     st.stop()
 
-DATABASE_FILE = "books.db"
+# مسار مؤقت لقاعدة البيانات
+DATABASE_FILE = "/tmp/books.db"
+DB_CACHE_TIME = 300  # 5 دقائق
+
 SESSION_TIMEOUT = 600
 MIN_REQUEST_INTERVAL = 2
 MAX_REQUESTS_PER_MINUTE = 20
 
-for key in ['active_sessions', 'current_bot_index', 'session_id', 'is_admin', 'bot_requests', 'show_counter', 'search_results', 'session_start_time', 'downloads_count', 'search_cache', 'search_history']:
+# ═══════════════════════════════════════════════════════════════
+# متغيرات الجلسة
+# ═══════════════════════════════════════════════════════════════
+
+for key in ['active_sessions', 'current_bot_index', 'session_id', 'is_admin', 'bot_requests', 'show_counter', 'search_results', 'session_start_time', 'downloads_count', 'search_cache', 'search_history', 'db_loaded', 'db_last_update', 'db_size']:
     if key not in st.session_state:
         if key == 'bot_requests':
             st.session_state[key] = {i: [] for i in range(len(BOT_TOKENS))}
         elif key in ['active_sessions', 'search_cache', 'search_history']:
             st.session_state[key] = {}
-        elif key in ['show_counter', 'is_admin']:
+        elif key in ['show_counter', 'is_admin', 'db_loaded']:
             st.session_state[key] = False
-        elif key in ['downloads_count', 'current_bot_index']:
+        elif key in ['downloads_count', 'current_bot_index', 'db_last_update', 'db_size']:
             st.session_state[key] = 0
         else:
             st.session_state[key] = None
 
+# ═══════════════════════════════════════════════════════════════
+# 📥 تحميل قاعدة البيانات من Google Drive
+# ═══════════════════════════════════════════════════════════════
+
+def extract_file_id(url_or_id):
+    """استخراج File ID من رابط أو إرجاع ID مباشرة"""
+    if not url_or_id:
+        return None
+    
+    # إذا كان ID مباشر (بدون رابط)
+    if len(url_or_id) < 50 and '/' not in url_or_id:
+        return url_or_id
+    
+    # استخراج من رابط
+    patterns = [
+        r'/file/d/([a-zA-Z0-9_-]+)',
+        r'id=([a-zA-Z0-9_-]+)',
+        r'/folders/([a-zA-Z0-9_-]+)',
+        r'https://drive\.google\.com/open\?id=([a-zA-Z0-9_-]+)'
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, url_or_id)
+        if match:
+            return match.group(1)
+    
+    return url_or_id
+
+def download_db_from_gdrive():
+    """تحميل قاعدة البيانات من Google Drive"""
+    
+    # التحقق من وجود File ID
+    if not GDRIVE_FILE_ID:
+        st.error("⚠️ لم يتم تعيين gdrive_file_id في الإعدادات!")
+        return False
+    
+    # إذا كان الملف موجود وحديث (أقل من 5 دقائق)
+    if os.path.exists(DATABASE_FILE):
+        file_age = time.time() - os.path.getmtime(DATABASE_FILE)
+        if file_age < DB_CACHE_TIME:
+            return True
+    
+    try:
+        file_id = extract_file_id(GDRIVE_FILE_ID)
+        
+        if not file_id:
+            st.error("❌ File ID غير صحيح!")
+            return False
+        
+        # رابط التحميل المباشر
+        download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+        
+        with st.spinner("🔄 جاري تحميل قاعدة البيانات من Google Drive..."):
+            response = requests.get(download_url, stream=True, timeout=30)
+            
+            # التعامل مع صفحة التأكيد لملفات كبيرة
+            if 'confirm' in response.text.lower():
+                # البحث عن رابط التأكيد
+                confirm_token = None
+                for key, value in response.cookies.items():
+                    if key.startswith('download_warning'):
+                        confirm_token = value
+                        break
+                
+                if confirm_token:
+                    download_url = f"https://drive.google.com/uc?export=download&id={file_id}&confirm={confirm_token}"
+                    response = requests.get(download_url, stream=True, timeout=30)
+            
+            if response.status_code == 200:
+                # حفظ الملف
+                total_size = 0
+                with open(DATABASE_FILE, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            f.write(chunk)
+                            total_size += len(chunk)
+                
+                st.session_state.db_loaded = True
+                st.session_state.db_last_update = time.time()
+                st.session_state.db_size = total_size / (1024 * 1024)  # MB
+                
+                return True
+            else:
+                st.error(f"❌ فشل التحميل: HTTP {response.status_code}")
+                return False
+                
+    except requests.exceptions.Timeout:
+        st.error("❌ انتهت مهلة التحميل. حاول مرة أخرى.")
+        return False
+    except Exception as e:
+        st.error(f"❌ خطأ في التحميل: {str(e)}")
+        return False
+
+def force_reload_db():
+    """إعادة تحميل قاعدة البيانات بالقوة"""
+    if os.path.exists(DATABASE_FILE):
+        os.remove(DATABASE_FILE)
+    st.session_state.db_loaded = False
+    return download_db_from_gdrive()
+
+# ═══════════════════════════════════════════════════════════════
+# 🔍 دوال قاعدة البيانات
+# ═══════════════════════════════════════════════════════════════
+
 def get_db_connection():
+    """الاتصال بقاعدة البيانات"""
+    
+    # تحميل القاعدة إذا لم تكن محملة
+    if not st.session_state.db_loaded or not os.path.exists(DATABASE_FILE):
+        if not download_db_from_gdrive():
+            return None
+    
     try:
         conn = sqlite3.connect(DATABASE_FILE, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn
     except Exception as e:
-        st.error(f"خطأ: {str(e)}")
+        st.error(f"❌ خطأ في الاتصال: {str(e)}")
         return None
 
 def normalize_arabic_text(text):
@@ -157,7 +284,7 @@ def search_books_advanced(query, filters=None, limit=50):
         cache_search(cache_key, final)
         return final
     except Exception as e:
-        st.error(f"خطأ: {str(e)}")
+        st.error(f"❌ خطأ في البحث: {str(e)}")
         return []
 
 def get_available_formats():
@@ -172,6 +299,21 @@ def get_available_formats():
         return [(r['file_extension'], r['count']) for r in results]
     except:
         return []
+
+def get_db_stats():
+    """الحصول على إحصائيات قاعدة البيانات"""
+    conn = get_db_connection()
+    if not conn:
+        return None
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) as total FROM books")
+        total = cursor.fetchone()['total']
+        conn.close()
+        return {"total_books": total}
+    except:
+        return None
 
 def get_autocomplete_suggestions(query, limit=5):
     if not query or len(query) < 2:
@@ -318,10 +460,13 @@ def render_book_card(row):
             else:
                 st.error("❌ فشل التحميل")
 
+# ═══════════════════════════════════════════════════════════════
+# واجهة المستخدم
+# ═══════════════════════════════════════════════════════════════
 
-# ═══════════════════════════════════════════════════════════
-# واجهة المستخدم - الصق هذا الجزء بعد الجزء 1
-# ═══════════════════════════════════════════════════════════
+# تحميل قاعدة البيانات عند بدء التطبيق
+if not st.session_state.db_loaded:
+    download_db_from_gdrive()
 
 clean_old_sessions()
 can_start, max_sessions, current_sessions = can_start_session()
@@ -343,6 +488,19 @@ if st.session_state.is_admin:
     toolbar_html += '<span class="counter-badge" style="background: #f59e0b;">👑 مشرف</span>'
 toolbar_html += "</div></div>"
 st.markdown(toolbar_html, unsafe_allow_html=True)
+
+# معلومات قاعدة البيانات
+if st.session_state.db_loaded:
+    db_stats = get_db_stats()
+    if db_stats:
+        last_update = datetime.fromtimestamp(st.session_state.db_last_update)
+        st.markdown(f"""
+        <div class="db-status">
+            📊 قاعدة البيانات: {db_stats['total_books']:,} كتاب | 
+            💾 الحجم: {st.session_state.db_size:.1f} MB | 
+            🔄 آخر تحديث: {last_update.strftime('%Y-%m-%d %H:%M')}
+        </div>
+        """, unsafe_allow_html=True)
 
 # أزرار التحكم
 col1, col2, col3, col4 = st.columns(4)
@@ -389,6 +547,8 @@ if not st.session_state.is_admin:
 if st.session_state.is_admin:
     with st.expander("🎛️ لوحة التحكم", expanded=True):
         st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
+        
+        # إحصائيات الجلسات
         col_a1, col_a2, col_a3 = st.columns(3)
         with col_a1:
             st.metric("الجلسات النشطة", current_sessions)
@@ -397,16 +557,39 @@ if st.session_state.is_admin:
         with col_a3:
             usage = (current_sessions / max_sessions * 100) if max_sessions > 0 else 0
             st.metric("الاستخدام", f"{usage:.0f}%")
+        
         if current_sessions > 0:
             st.warning(f"⚠️ يوجد {current_sessions} جلسة نشطة")
             if st.button("🚫 إنهاء جميع الجلسات", type="primary"):
                 st.session_state.active_sessions = {}
                 st.success("✅ تم إنهاء جميع الجلسات")
                 st.rerun()
+        
+        # إحصائيات البوتات
         st.markdown("### 🤖 إحصائيات البوتات")
         for idx in range(len(BOT_TOKENS)):
             recent = [r for r in st.session_state.bot_requests[idx] if current_time - r < 60]
             st.text(f"البوت {idx + 1}: {len(recent)} طلب في الدقيقة الأخيرة")
+        
+        # إدارة قاعدة البيانات
+        st.markdown("### 📊 إدارة قاعدة البيانات")
+        col_db1, col_db2 = st.columns(2)
+        
+        with col_db1:
+            if st.button("🔄 إعادة تحميل القاعدة", use_container_width=True):
+                with st.spinner("جاري التحميل..."):
+                    if force_reload_db():
+                        st.success("✅ تم إعادة التحميل!")
+                        st.rerun()
+                    else:
+                        st.error("❌ فشل التحميل")
+        
+        with col_db2:
+            if st.session_state.db_loaded:
+                st.info(f"✅ القاعدة محمّلة ({st.session_state.db_size:.1f} MB)")
+            else:
+                st.warning("⚠️ القاعدة غير محمّلة")
+        
         st.markdown('</div>', unsafe_allow_html=True)
 
 # منطقة البحث
