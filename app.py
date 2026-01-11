@@ -20,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# استيراد خط عربي جميل (Cairo) وتنسيق الواجهة
+# استيراد خط عربي (Cairo) وتنسيق الواجهة
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
@@ -111,17 +111,6 @@ st.markdown("""
     }
 
     /* Status Messages */
-    .wait-box {
-        background: white;
-        padding: 3rem;
-        border-radius: 20px;
-        text-align: center;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-        margin: 4rem auto;
-        max-width: 600px;
-        border: 1px solid #e5e7eb;
-    }
-    
     .status-active {
         background: #ecfdf5; color: #047857;
         padding: 0.5rem 1rem; border-radius: 12px;
@@ -151,7 +140,7 @@ try:
     USER_API_HASH = st.secrets.get("user_api_hash", "")
     USER_SESSION_STRING = st.secrets.get("user_session_string", "")
 except:
-    st.error("⚠️ خطأ في إعدادات النظام الداخلي")
+    st.error("⚠️ خطأ في إعدادات النظام الداخلي (Secrets)")
     st.stop()
 
 DATABASE_FILE = "/tmp/books.db"
@@ -309,7 +298,7 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
             st.error("عذراً، هذا الملف غير متاح للتحميل المباشر حالياً.")
             return None
         
-        # رسالة انتظار لطيفة بدون تفاصيل تقنية
+        # رسالة انتظار لطيفة
         msg_holder = st.empty()
         for i in range(int(wait_time), 0, -1):
             msg_holder.info(f"🔄 جاري تجهيز الملف... (يرجى الانتظار {i} ثواني)")
@@ -406,11 +395,9 @@ def render_book_card_clean(row):
     # زر التحميل الموحد (الذكي)
     col1, col2 = st.columns([1, 3])
     with col1:
-        # إذا كان الملف أكبر من المسموح به في الجلسة
         if file_size_mb > USER_SESSION_MAX_SIZE_MB:
-            st.warning("⚠️ الملف كبير جداً للتحميل عبر الويب")
+            st.warning("⚠️ الملف كبير جداً للتحميل")
         else:
-            # زر واحد فقط للكل
             if st.button("⬇️ تحميل الكتاب", key=f"btn_{row['id']}", use_container_width=True, type="primary"):
                 data, name = unified_downloader(row['file_id'], row['file_name'], file_size_mb, file_ext)
                 if data:
@@ -439,19 +426,20 @@ for sid in list(st.session_state.active_sessions.keys()):
         del st.session_state.active_sessions[sid]
 
 active_count = len(st.session_state.active_sessions)
-max_allowed = 15  # رقم ثابت تقريبي للمستخدم
+max_allowed = 15
 
-# الشريط العلوي
+# --- منطقة الشريط العلوي (تم الإصلاح هنا) ---
 st.markdown(f"""
 <div class="toolbar">
     <div class="app-title">🏛️ المكتبة الرقمية</div>
-    <div>
+    <div style="display: flex; gap: 10px; align-items: center;">
         {f'<span class="status-active">👑 مشرف النظام</span>' if st.session_state.is_admin else ''}
-        {f'<span style="color:#0e7490; font-weight:bold; margin-right:10px;">زوار المكتبة: {active_count}</span>' if st.session_state.show_counter else ''}
+        {f'<span style="color:#0e7490; font-weight:bold; font-size:0.9rem;">الزوار: {active_count}</span>' if st.session_state.show_counter else ''}
     </div>
 </div>
-<div style="margin-top: 80px;"></div>
+<div style="margin-top: 90px;"></div>
 """, unsafe_allow_html=True)
+# ----------------------------------------------
 
 # صفحة الدخول (غرفة الانتظار)
 if not st.session_state.session_id and not st.session_state.is_admin:
@@ -481,7 +469,6 @@ if not st.session_state.session_id and not st.session_state.is_admin:
             time.sleep(5)
             st.rerun()
             
-    # دخول المشرف
     with st.expander("🔒 دخول الإدارة"):
         if st.text_input("كلمة المرور", type="password") == ADMIN_PASSWORD:
             st.session_state.is_admin = True
@@ -489,7 +476,6 @@ if not st.session_state.session_id and not st.session_state.is_admin:
 
 # واجهة المكتبة (بعد الدخول)
 else:
-    # عداد الوقت المتبقي
     if st.session_state.session_id:
         elapsed = int(current_time - st.session_state.session_start_time)
         remaining = max(0, SESSION_TIMEOUT - elapsed)
@@ -498,7 +484,6 @@ else:
             st.rerun()
         st.progress(remaining / SESSION_TIMEOUT)
     
-    # البحث
     col_search, col_btn = st.columns([4, 1])
     with col_search:
         query = st.text_input("", placeholder="🔍 ابحث عن كتاب، مؤلف، أو موضوع...", label_visibility="collapsed")
@@ -516,7 +501,6 @@ else:
         else:
             st.info("لم يتم العثور على نتائج مطابقة.")
 
-    # لوحة تحكم المشرف (تظهر فقط للمشرف)
     if st.session_state.is_admin:
         with st.expander("🛠️ لوحة تحكم النظام", expanded=False):
             st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
@@ -532,7 +516,6 @@ else:
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
             
-    # زر الخروج للمستخدم
     if st.session_state.session_id:
         if st.button("خروج من المكتبة"):
             del st.session_state.active_sessions[st.session_state.session_id]
