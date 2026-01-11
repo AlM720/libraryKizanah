@@ -50,8 +50,13 @@ try:
     CHANNEL_ID = st.secrets["channelid"]
     ADMIN_PASSWORD = st.secrets["password"]
     
-    # رابط Google Drive (أضف هذا في secrets.toml)
+    # رابط Google Drive
     GDRIVE_FILE_ID = st.secrets.get("gdrive_file_id", "")
+    
+    # بيانات MTProto للتحميل الكامل (اختياري)
+    USER_API_ID = st.secrets.get("user_api_id", "")
+    USER_API_HASH = st.secrets.get("user_api_hash", "")
+    USER_SESSION_STRING = st.secrets.get("user_session_string", "")
     
 except:
     st.error("⚠️ خطأ في تحميل الإعدادات")
@@ -62,25 +67,36 @@ DATABASE_FILE = "/tmp/books.db"
 DB_CACHE_TIME = 300  # 5 دقائق
 
 SESSION_TIMEOUT = 600
-MIN_REQUEST_INTERVAL = 2
-MAX_REQUESTS_PER_MINUTE = 20
+MIN_REQUEST_INTERVAL = 3  # ⚡ 3 ثواني بين كل تحميل
+MAX_REQUESTS_PER_MINUTE = 15  # ⚡ الحد الأقصى لكل بوت
+LARGE_FILE_MIN_INTERVAL = 8  # ⚡ 8 ثواني للملفات الكبيرة (+5MB)
+LARGE_FILE_THRESHOLD_MB = 5  # الملفات أكبر من 5MB تعتبر كبيرة
+
+# إعدادات جلسة المستخدم (MTProto)
+USER_SESSION_MIN_INTERVAL = 10  # ⚡ 10 ثواني بين التحميلات عبر جلسة المستخدم
+USER_SESSION_MAX_SIZE_MB = 2000  # الحد الأقصى 2GB
 
 # ═══════════════════════════════════════════════════════════════
 # متغيرات الجلسة
 # ═══════════════════════════════════════════════════════════════
 
-for key in ['active_sessions', 'current_bot_index', 'session_id', 'is_admin', 'bot_requests', 'show_counter', 'search_results', 'session_start_time', 'downloads_count', 'search_cache', 'search_history', 'db_loaded', 'db_last_update', 'db_size']:
+for key in ['active_sessions', 'current_bot_index', 'session_id', 'is_admin', 'bot_requests', 'show_counter', 'search_results', 'session_start_time', 'downloads_count', 'search_cache', 'search_history', 'db_loaded', 'db_last_update', 'db_size', 'last_download_time', 'last_large_download_time', 'downloading_now', 'last_user_session_download', 'user_session_downloads_count']:
     if key not in st.session_state:
         if key == 'bot_requests':
             st.session_state[key] = {i: [] for i in range(len(BOT_TOKENS))}
         elif key in ['active_sessions', 'search_cache', 'search_history']:
             st.session_state[key] = {}
-        elif key in ['show_counter', 'is_admin', 'db_loaded']:
+        elif key in ['show_counter', 'is_admin', 'db_loaded', 'downloading_now']:
             st.session_state[key] = False
-        elif key in ['downloads_count', 'current_bot_index', 'db_last_update', 'db_size']:
+        elif key in ['downloads_count', 'current_bot_index', 'db_last_update', 'db_size', 'user_session_downloads_count']:
             st.session_state[key] = 0
+        elif key in ['last_download_time', 'last_large_download_time', 'last_user_session_download']:
+            st.session_state[key] = 0.0
         else:
             st.session_state[key] = None
+
+# التحقق من توفر Session String
+USER_SESSION_AVAILABLE = bool(USER_API_ID and USER_API_HASH and USER_SESSION_STRING)
 
 # ═══════════════════════════════════════════════════════════════
 # 📥 تحميل قاعدة البيانات من Google Drive
@@ -91,11 +107,9 @@ def extract_file_id(url_or_id):
     if not url_or_id:
         return None
     
-    # إذا كان ID مباشر (بدون رابط)
     if len(url_or_id) < 50 and '/' not in url_or_id:
         return url_or_id
     
-    # استخراج من رابط
     patterns = [
         r'/file/d/([a-zA-Z0-9_-]+)',
         r'id=([a-zA-Z0-9_-]+)',
@@ -113,12 +127,10 @@ def extract_file_id(url_or_id):
 def download_db_from_gdrive():
     """تحميل قاعدة البيانات من Google Drive"""
     
-    # التحقق من وجود File ID
     if not GDRIVE_FILE_ID:
         st.error("⚠️ لم يتم تعيين gdrive_file_id في الإعدادات!")
         return False
     
-    # إذا كان الملف موجود وحديث (أقل من 5 دقائق)
     if os.path.exists(DATABASE_FILE):
         file_age = time.time() - os.path.getmtime(DATABASE_FILE)
         if file_age < DB_CACHE_TIME:
@@ -131,15 +143,12 @@ def download_db_from_gdrive():
             st.error("❌ File ID غير صحيح!")
             return False
         
-        # رابط التحميل المباشر
         download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
         
         with st.spinner("🔄 جاري تحميل قاعدة البيانات من Google Drive..."):
             response = requests.get(download_url, stream=True, timeout=30)
             
-            # التعامل مع صفحة التأكيد لملفات كبيرة
             if 'confirm' in response.text.lower():
-                # البحث عن رابط التأكيد
                 confirm_token = None
                 for key, value in response.cookies.items():
                     if key.startswith('download_warning'):
@@ -151,7 +160,6 @@ def download_db_from_gdrive():
                     response = requests.get(download_url, stream=True, timeout=30)
             
             if response.status_code == 200:
-                # حفظ الملف
                 total_size = 0
                 with open(DATABASE_FILE, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
@@ -161,7 +169,7 @@ def download_db_from_gdrive():
                 
                 st.session_state.db_loaded = True
                 st.session_state.db_last_update = time.time()
-                st.session_state.db_size = total_size / (1024 * 1024)  # MB
+                st.session_state.db_size = total_size / (1024 * 1024)
                 
                 return True
             else:
@@ -189,7 +197,6 @@ def force_reload_db():
 def get_db_connection():
     """الاتصال بقاعدة البيانات"""
     
-    # تحميل القاعدة إذا لم تكن محملة
     if not st.session_state.db_loaded or not os.path.exists(DATABASE_FILE):
         if not download_db_from_gdrive():
             return None
@@ -394,15 +401,104 @@ def update_session_activity(activity='search'):
             st.session_state.active_sessions[st.session_state.session_id]['searches'] += 1
 
 def get_best_bot():
+    """اختيار أفضل بوت متاح مع توزيع الحمل"""
     current_time = time.time()
     best_idx, min_req = 0, float('inf')
+    
     for idx in range(len(BOT_TOKENS)):
         recent = [r for r in st.session_state.bot_requests[idx] if current_time - r < 60]
         st.session_state.bot_requests[idx] = recent
+        
         if len(recent) < min_req:
             min_req, best_idx = len(recent), idx
+    
     st.session_state.bot_requests[best_idx].append(current_time)
+    
     return BOT_TOKENS[best_idx], best_idx
+
+def check_download_cooldown(file_size_mb=0):
+    """
+    التحقق من فترة الانتظار بين التحميلات
+    - ملفات عادية: 3 ثواني
+    - ملفات كبيرة (+5MB): 8 ثواني
+    """
+    current_time = time.time()
+    is_large_file = file_size_mb >= LARGE_FILE_THRESHOLD_MB
+    
+    if is_large_file:
+        last_time = st.session_state.last_large_download_time
+        required_interval = LARGE_FILE_MIN_INTERVAL
+        file_type = "كبير"
+    else:
+        last_time = st.session_state.last_download_time
+        required_interval = MIN_REQUEST_INTERVAL
+        file_type = "عادي"
+    
+    if last_time > 0:
+        elapsed = current_time - last_time
+        remaining = required_interval - elapsed
+        
+        if remaining > 0:
+            return False, remaining, file_type
+    
+    return True, 0, file_type
+
+def check_user_session_cooldown():
+    """التحقق من فترة الانتظار لجلسة المستخدم"""
+    if not USER_SESSION_AVAILABLE:
+        return False, 0
+    
+    current_time = time.time()
+    last_time = st.session_state.last_user_session_download
+    
+    if last_time > 0:
+        elapsed = current_time - last_time
+        remaining = USER_SESSION_MIN_INTERVAL - elapsed
+        
+        if remaining > 0:
+            return False, remaining
+    
+    return True, 0
+
+def update_download_time(file_size_mb=0):
+    """تحديث وقت آخر تحميل"""
+    current_time = time.time()
+    is_large_file = file_size_mb >= LARGE_FILE_THRESHOLD_MB
+    
+    if is_large_file:
+        st.session_state.last_large_download_time = current_time
+    
+    st.session_state.last_download_time = current_time
+
+def update_user_session_time():
+    """تحديث وقت آخر تحميل لجلسة المستخدم"""
+    st.session_state.last_user_session_download = time.time()
+    st.session_state.user_session_downloads_count += 1
+
+def get_bot_health_status():
+    """الحصول على حالة البوتات الصحية"""
+    current_time = time.time()
+    statuses = []
+    
+    for idx in range(len(BOT_TOKENS)):
+        recent = [r for r in st.session_state.bot_requests[idx] if current_time - r < 60]
+        usage_percent = (len(recent) / MAX_REQUESTS_PER_MINUTE) * 100
+        
+        if usage_percent < 50:
+            status = "🟢 ممتاز"
+        elif usage_percent < 75:
+            status = "🟡 جيد"
+        else:
+            status = "🔴 مشغول"
+        
+        statuses.append({
+            'bot_num': idx + 1,
+            'requests': len(recent),
+            'usage_percent': usage_percent,
+            'status': status
+        })
+    
+    return statuses
 
 def remove_links_from_description(desc):
     if not desc:
@@ -412,32 +508,222 @@ def remove_links_from_description(desc):
     desc = re.sub(r'@\w+', '', desc)
     return desc.strip()
 
-def download_from_telegram(file_id):
-    bot_token, _ = get_best_bot()
+def download_from_telegram(file_id, file_name="", file_size_mb=0):
+    """
+    تحميل ملف من تيليجرام مع حماية كاملة من الحظر
+    """
+    
+    # 🔒 منع التحميلات المتعددة المتزامنة
+    if st.session_state.downloading_now:
+        st.error("❌ يوجد تحميل جاري حالياً. انتظر حتى ينتهي.")
+        return None
+    
+    # 🔒 التحقق من فترة الانتظار
+    can_download, wait_time, file_type = check_download_cooldown(file_size_mb)
+    
+    if not can_download:
+        st.warning(f"⏰ يرجى الانتظار {wait_time:.1f} ثانية قبل التحميل التالي (ملف {file_type})")
+        
+        placeholder = st.empty()
+        for remaining in range(int(wait_time), 0, -1):
+            placeholder.warning(f"⏳ انتظر {remaining} ثانية...")
+            time.sleep(1)
+        placeholder.empty()
+    
+    # 🔒 قفل التحميل
+    st.session_state.downloading_now = True
+    
     try:
-        url = f"https://api.telegram.org/bot{bot_token}/getFile"
-        response = requests.get(url, params={'file_id': file_id}, timeout=15)
+        bot_token, bot_idx = get_best_bot()
+        
+        if st.session_state.show_counter or st.session_state.is_admin:
+            st.info(f"🤖 استخدام البوت #{bot_idx + 1}")
+        
+        get_file_url = f"https://api.telegram.org/bot{bot_token}/getFile"
+        response = requests.get(get_file_url, params={'file_id': file_id}, timeout=15)
+        
+        # التعامل مع Rate Limit
         if response.status_code == 429:
-            st.warning("⏳ انتظار...")
-            time.sleep(MIN_REQUEST_INTERVAL)
-            return download_from_telegram(file_id)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('ok'):
-                file_path = data['result']['file_path']
-                download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-                file_response = requests.get(download_url, timeout=60, stream=True)
-                if file_response.status_code == 200:
-                    update_session_activity('download')
-                    return file_response.content
+            retry_after = response.json().get('parameters', {}).get('retry_after', 5)
+            st.warning(f"⚠️ البوت #{bot_idx + 1} محظور مؤقتاً. الانتظار {retry_after} ثانية...")
+            
+            for _ in range(10):
+                st.session_state.bot_requests[bot_idx].append(time.time())
+            
+            time.sleep(retry_after)
+            
+            st.session_state.downloading_now = False
+            return download_from_telegram(file_id, file_name, file_size_mb)
+        
+        if response.status_code != 200:
+            st.error(f"❌ خطأ في الحصول على معلومات الملف: {response.status_code}")
+            return None
+        
+        data = response.json()
+        
+        if not data.get('ok'):
+            error_desc = data.get('description', 'خطأ غير معروف')
+            st.error(f"❌ {error_desc}")
+            return None
+        
+        file_path = data['result'].get('file_path')
+        file_size = data['result'].get('file_size', 0)
+        
+        if not file_path:
+            st.error("❌ لم يتم العثور على مسار الملف")
+            return None
+        
+        max_size = 20 * 1024 * 1024
+        if file_size > max_size:
+            st.error(f"❌ الملف كبير جداً ({file_size / (1024*1024):.1f} MB). الحد الأقصى 20 MB")
+            st.info(f"💡 افتح القناة: https://t.me/{CHANNEL_ID.replace('@', '')}")
+            return None
+        
+        download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+        
+        with st.spinner(f"📥 جاري التحميل من البوت #{bot_idx + 1}... ({file_size / (1024*1024):.1f} MB)"):
+            file_response = requests.get(download_url, timeout=120, stream=True)
+            
+            if file_response.status_code == 200:
+                update_session_activity('download')
+                
+                total_size = int(file_response.headers.get('content-length', 0))
+                downloaded = 0
+                chunks = []
+                
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                for chunk in file_response.iter_content(chunk_size=8192):
+                    if chunk:
+                        chunks.append(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            progress = downloaded / total_size
+                            progress_bar.progress(progress)
+                            status_text.text(f"تم تحميل: {downloaded / (1024*1024):.1f} MB / {total_size / (1024*1024):.1f} MB")
+                
+                progress_bar.empty()
+                status_text.empty()
+                
+                update_download_time(file_size_mb)
+                
+                return b''.join(chunks)
+            else:
+                st.error(f"❌ فشل التحميل: HTTP {file_response.status_code}")
+                return None
+                
+    except requests.exceptions.Timeout:
+        st.error("❌ انتهت مهلة التحميل. حاول مرة أخرى.")
         return None
-    except:
+    except requests.exceptions.ConnectionError:
+        st.error("❌ خطأ في الاتصال بالإنترنت")
         return None
+    except Exception as e:
+        st.error(f"❌ خطأ غير متوقع: {str(e)}")
+        return None
+    finally:
+        st.session_state.downloading_now = False
+
+def download_large_file_via_user_session(file_id, file_name="", file_size_mb=0):
+    """
+    تحميل ملفات كبيرة (+20MB) عبر جلسة المستخدم MTProto
+    يستخدم file_id من قاعدة البيانات مباشرة للتحميل - بدون بحث!
+    """
+    
+    if not USER_SESSION_AVAILABLE:
+        st.error("❌ جلسة المستخدم غير متوفرة. يرجى إضافة user_session_string في ملف الإعدادات.")
+        return None
+    
+    if st.session_state.downloading_now:
+        st.error("❌ يوجد تحميل جاري حالياً. انتظر حتى ينتهي.")
+        return None
+    
+    can_download, wait_time = check_user_session_cooldown()
+    
+    if not can_download:
+        st.warning(f"⏰ يرجى الانتظار {wait_time:.1f} ثانية قبل التحميل التالي")
+        
+        placeholder = st.empty()
+        for remaining in range(int(wait_time), 0, -1):
+            placeholder.warning(f"⏳ انتظر {remaining} ثانية...")
+            time.sleep(1)
+        placeholder.empty()
+    
+    st.session_state.downloading_now = True
+    
+    try:
+        from telethon.sync import TelegramClient
+        from telethon.sessions import StringSession
+        import io
+        
+        client = TelegramClient(
+            StringSession(USER_SESSION_STRING),
+            USER_API_ID,
+            USER_API_HASH
+        )
+        
+        with client:
+            with st.spinner(f"📥 جاري التحميل... ({file_size_mb:.1f} MB)"):
+                
+                file_buffer = io.BytesIO()
+                
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                
+                def callback(current, total):
+                    if total > 0:
+                        progress = current / total
+                        progress_bar.progress(min(progress, 1.0))
+                        status_text.text(f"📊 {current / (1024*1024):.1f} MB / {total / (1024*1024):.1f} MB")
+                
+                client.download_file(
+                    file_id,
+                    file=file_buffer,
+                    progress_callback=callback
+                )
+                
+                progress_bar.empty()
+                status_text.empty()
+                
+                file_buffer.seek(0)
+                file_data = file_buffer.read()
+                
+                if not file_data:
+                    st.error("❌ فشل تحميل البيانات")
+                    return None
+                
+                update_session_activity('download')
+                update_user_session_time()
+                
+                return file_data
+                
+    except ImportError:
+        st.error("❌ مكتبة Telethon غير مثبتة.")
+        st.code("pip install telethon", language="bash")
+        return None
+    except Exception as e:
+        st.error(f"❌ خطأ في التحميل: {str(e)}")
+        
+        if st.session_state.is_admin:
+            import traceback
+            with st.expander("🔍 تفاصيل الخطأ"):
+                st.code(traceback.format_exc())
+        
+        return None
+    finally:
+        st.session_state.downloading_now = False
 
 def render_book_card(row):
+    """عرض بطاقة الكتاب مع زر التحميل"""
     desc = remove_links_from_description(row.get('description', ''))
     colors = {'pdf': '#ef4444', 'epub': '#8b5cf6', 'mobi': '#3b82f6', 'doc': '#10b981', 'docx': '#10b981'}
     color = colors.get(row.get('file_extension', ''), '#6b7280')
+    
+    file_size_mb = row.get('size_mb', 0)
+    is_large = file_size_mb >= LARGE_FILE_THRESHOLD_MB
+    is_very_large = file_size_mb > 20
+    
     st.markdown(f"""
     <div class="result-card">
         <div class="book-title">📖 {row.get('file_name', 'بدون عنوان')}</div>
@@ -446,25 +732,170 @@ def render_book_card(row):
                 {row.get('file_extension', 'N/A').upper()}
             </span>
             <span>📄 {row.get('pages', 'غير محدد')} صفحة</span>
-            <span>💾 {row.get('size_mb', 0)} MB</span>
+            <span>💾 {file_size_mb:.1f} MB</span>
+            {f'<span style="background: #f59e0b; color: white; padding: 0.2rem 0.6rem; border-radius: 5px; font-size: 0.75rem;">⚡ ملف كبير</span>' if is_large else ''}
+            {f'<span style="background: #ef4444; color: white; padding: 0.2rem 0.6rem; border-radius: 5px; font-size: 0.75rem;">🔥 ملف ضخم</span>' if is_very_large else ''}
         </div>
-        {f'<div class="book-description">{desc[:200]}...</div>' if desc else ''}
+        {f'<div class="book-description">{desc[:300]}...</div>' if desc and len(desc) > 0 else ''}
     </div>
     """, unsafe_allow_html=True)
-    if st.button(f"⬇️ تحميل", key=f"dl_{row.get('id')}", use_container_width=True):
-        with st.spinner("⏳ جاري التحميل..."):
-            data = download_from_telegram(row.get('file_id'))
-            if data:
-                st.download_button("💾 حفظ", data, row.get('file_name', 'book'), "application/octet-stream", key=f"sv_{row.get('id')}")
-                st.success("✅ جاهز!")
+    
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        file_id = row.get('file_id', '')
+        file_name = row.get('file_name', 'book')
+        file_ext = row.get('file_extension', 'pdf')
+        
+        if file_size_mb > USER_SESSION_MAX_SIZE_MB:
+            st.error(f"❌ الملف ضخم جداً ({file_size_mb:.1f} MB). الحد الأقصى {USER_SESSION_MAX_SIZE_MB} MB")
+            if st.button(f"🔗 فتح في القناة", key=f"ch_{row.get('id')}", use_container_width=True):
+                channel_link = f"https://t.me/{CHANNEL_ID.replace('@', '')}"
+                st.info(f"افتح القناة: {channel_link}")
+        
+        elif is_very_large:
+            if USER_SESSION_AVAILABLE:
+                can_download, wait_time = check_user_session_cooldown()
+                
+                button_label = f"⬇️ تحميل ({file_size_mb:.1f} MB) 🔥"
+                
+                if not can_download:
+                    st.warning(f"⏰ انتظر {wait_time:.0f}ث قبل التحميل")
+                
+                button_disabled = st.session_state.downloading_now or not can_download
+                
+                if st.button(
+                    button_label,
+                    key=f"dl_user_{row.get('id')}",
+                    use_container_width=True,
+                    type="secondary",
+                    disabled=button_disabled
+                ):
+                    if not file_id:
+                        st.error("❌ معرف الملف غير موجود")
+                    else:
+                        file_data = download_large_file_via_user_session(file_id, file_name, file_size_mb)
+                        
+                        if file_data:
+                            if not file_name.endswith(f'.{file_ext}'):
+                                file_name = f"{file_name}.{file_ext}"
+                            
+                            mime_types = {
+                                'pdf': 'application/pdf',
+                                'epub': 'application/epub+zip',
+                                'mobi': 'application/x-mobipocket-ebook',
+                                'doc': 'application/msword',
+                                'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                                'txt': 'text/plain'
+                            }
+                            mime_type = mime_types.get(file_ext.lower(), 'application/octet-stream')
+                            
+                            st.download_button(
+                                label="💾 حفظ الملف",
+                                data=file_data,
+                                file_name=file_name,
+                                mime=mime_type,
+                                key=f"sv_user_{row.get('id')}",
+                                use_container_width=True
+                            )
+                            st.success("✅ الملف جاهز للتحميل!")
+                            st.info(f"⏰ يمكنك تحميل ملف آخر بعد {USER_SESSION_MIN_INTERVAL} ثواني")
             else:
-                st.error("❌ فشل التحميل")
+                st.warning(f"⚠️ الملف كبير ({file_size_mb:.1f} MB) - يحتاج جلسة مستخدم")
+                
+                if USER_API_ID and USER_API_HASH:
+                    st.info("💡 المشرف: أضف user_session_string في Secrets")
+                else:
+                    st.info("💡 المشرف لم يفعّل التحميل الكامل بعد")
+                
+                if st.button(f"🔗 فتح في القناة", key=f"ch2_{row.get('id')}", use_container_width=True):
+                    channel_link = f"https://t.me/{CHANNEL_ID.replace('@', '')}"
+                    st.info(f"افتح القناة: {channel_link}")
+        
+        else:
+            can_download, wait_time, file_type = check_download_cooldown(file_size_mb)
+            
+            button_label = f"⬇️ تحميل الكتاب ({file_size_mb:.1f} MB)"
+            if is_large:
+                button_label += " ⚡"
+            
+            if not can_download:
+                st.warning(f"⏰ انتظر {wait_time:.0f}ث قبل التحميل التالي")
+            
+            button_disabled = st.session_state.downloading_now or not can_download
+            
+            if st.button(
+                button_label, 
+                key=f"dl_{row.get('id')}", 
+                use_container_width=True, 
+                type="primary",
+                disabled=button_disabled
+            ):
+                if not file_id:
+                    st.error("❌ معرف الملف غير موجود")
+                else:
+                    file_data = download_from_telegram(file_id, file_name, file_size_mb)
+                    
+                    if file_data:
+                        if not file_name.endswith(f'.{file_ext}'):
+                            file_name = f"{file_name}.{file_ext}"
+                        
+                        mime_types = {
+                            'pdf': 'application/pdf',
+                            'epub': 'application/epub+zip',
+                            'mobi': 'application/x-mobipocket-ebook',
+                            'doc': 'application/msword',
+                            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                            'txt': 'text/plain'
+                        }
+                        mime_type = mime_types.get(file_ext.lower(), 'application/octet-stream')
+                        
+                        st.download_button(
+                            label="💾 حفظ الملف",
+                            data=file_data,
+                            file_name=file_name,
+                            mime=mime_type,
+                            key=f"sv_{row.get('id')}",
+                            use_container_width=True
+                        )
+                        st.success("✅ الملف جاهز للتحميل!")
+                        
+                        if is_large:
+                            st.info(f"⏰ يمكنك تحميل ملف كبير آخر بعد {LARGE_FILE_MIN_INTERVAL} ثواني")
+                        else:
+                            st.info(f"⏰ يمكنك تحميل ملف آخر بعد {MIN_REQUEST_INTERVAL} ثواني")
+    
+    with col2:
+        if st.button("ℹ️ تفاصيل", key=f"info_{row.get('id')}", use_container_width=True):
+            with st.expander("📋 معلومات الكتاب", expanded=True):
+                st.write(f"**الاسم:** {row.get('file_name', 'N/A')}")
+                st.write(f"**الصيغة:** {row.get('file_extension', 'N/A').upper()}")
+                st.write(f"**الحجم:** {file_size_mb:.2f} MB")
+                st.write(f"**الصفحات:** {row.get('pages', 'غير محدد')}")
+                
+                if file_size_mb > USER_SESSION_MAX_SIZE_MB:
+                    st.write(f"**النوع:** 💀 ضخم جداً (غير مدعوم)")
+                elif is_very_large:
+                    if USER_SESSION_AVAILABLE:
+                        st.write(f"**النوع:** 🔥 ملف ضخم (جلسة المستخدم)")
+                        st.write(f"**الانتظار:** {USER_SESSION_MIN_INTERVAL} ثانية")
+                    else:
+                        st.write(f"**النوع:** 🔥 ملف ضخم (غير متاح)")
+                elif is_large:
+                    st.write(f"**النوع:** ⚡ كبير (البوتات)")
+                    st.write(f"**الانتظار:** {LARGE_FILE_MIN_INTERVAL} ثانية")
+                else:
+                    st.write(f"**النوع:** 📄 عادي (البوتات)")
+                    st.write(f"**الانتظار:** {MIN_REQUEST_INTERVAL} ثانية")
+                
+                if desc:
+                    st.write(f"**الوصف:**")
+                    st.write(desc)
 
 # ═══════════════════════════════════════════════════════════════
 # واجهة المستخدم
 # ═══════════════════════════════════════════════════════════════
 
-# تحميل قاعدة البيانات عند بدء التطبيق
 if not st.session_state.db_loaded:
     download_db_from_gdrive()
 
@@ -472,7 +903,6 @@ clean_old_sessions()
 can_start, max_sessions, current_sessions = can_start_session()
 current_time = time.time()
 
-# شريط الأدوات
 toolbar_html = f"""
 <div class="toolbar">
     <div style="display: flex; gap: 0.5rem; align-items: center;">
@@ -489,7 +919,6 @@ if st.session_state.is_admin:
 toolbar_html += "</div></div>"
 st.markdown(toolbar_html, unsafe_allow_html=True)
 
-# معلومات قاعدة البيانات
 if st.session_state.db_loaded:
     db_stats = get_db_stats()
     if db_stats:
@@ -502,7 +931,6 @@ if st.session_state.db_loaded:
         </div>
         """, unsafe_allow_html=True)
 
-# أزرار التحكم
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     if st.button("▶️ بدء", use_container_width=True):
@@ -531,7 +959,6 @@ with col4:
             st.session_state.is_admin = False
             st.rerun()
 
-# تسجيل دخول المشرف
 if not st.session_state.is_admin:
     with st.expander("🔐 دخول المشرف"):
         admin_pass = st.text_input("كلمة السر:", type="password", key="admin_login")
@@ -543,12 +970,10 @@ if not st.session_state.is_admin:
             else:
                 st.error("كلمة سر خاطئة!")
 
-# لوحة المشرف
 if st.session_state.is_admin:
     with st.expander("🎛️ لوحة التحكم", expanded=True):
         st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
         
-        # إحصائيات الجلسات
         col_a1, col_a2, col_a3 = st.columns(3)
         with col_a1:
             st.metric("الجلسات النشطة", current_sessions)
@@ -565,13 +990,102 @@ if st.session_state.is_admin:
                 st.success("✅ تم إنهاء جميع الجلسات")
                 st.rerun()
         
-        # إحصائيات البوتات
         st.markdown("### 🤖 إحصائيات البوتات")
-        for idx in range(len(BOT_TOKENS)):
-            recent = [r for r in st.session_state.bot_requests[idx] if current_time - r < 60]
-            st.text(f"البوت {idx + 1}: {len(recent)} طلب في الدقيقة الأخيرة")
         
-        # إدارة قاعدة البيانات
+        bot_statuses = get_bot_health_status()
+        for status in bot_statuses:
+            col_b1, col_b2, col_b3 = st.columns([2, 2, 1])
+            with col_b1:
+                st.text(f"البوت #{status['bot_num']}")
+            with col_b2:
+                st.text(f"{status['requests']}/{MAX_REQUESTS_PER_MINUTE} طلب/دقيقة ({status['usage_percent']:.0f}%)")
+            with col_b3:
+                st.text(status['status'])
+        
+        st.markdown("### 🛡️ نظام الحماية من الحظر")
+        
+        protection_info = f"""
+        **📌 البوتات (للملفات < 20MB):**
+        - ⏱️ التأخير بين التحميلات العادية: {MIN_REQUEST_INTERVAL} ثواني
+        - ⚡ التأخير بين الملفات الكبيرة (+{LARGE_FILE_THRESHOLD_MB}MB): {LARGE_FILE_MIN_INTERVAL} ثواني
+        - 🎯 حد الطلبات لكل بوت: {MAX_REQUESTS_PER_MINUTE} طلب/دقيقة
+        - 🤖 عدد البوتات النشطة: {len(BOT_TOKENS)}
+        
+        **🔥 جلسة المستخدم (للملفات 20MB - 2GB):**
+        - 📊 الحالة: {'✅ نشطة' if USER_SESSION_AVAILABLE else '❌ غير مفعّلة'}
+        - ⏱️ التأخير بين التحميلات: {USER_SESSION_MIN_INTERVAL} ثواني
+        - 📦 الحد الأقصى: {USER_SESSION_MAX_SIZE_MB} MB
+        - 📥 عدد التحميلات: {st.session_state.user_session_downloads_count}
+        
+        **🔒 حماية عامة:**
+        - منع التحميلات المتزامنة: {'✅ نشط' if not st.session_state.downloading_now else '🔴 جاري التحميل'}
+        """
+        
+        st.info(protection_info)
+        
+        if st.session_state.last_download_time > 0:
+            last_normal = time.time() - st.session_state.last_download_time
+            st.text(f"⏰ آخر تحميل عادي (بوت): منذ {last_normal:.0f} ثانية")
+        
+        if st.session_state.last_large_download_time > 0:
+            last_large = time.time() - st.session_state.last_large_download_time
+            st.text(f"⚡ آخر تحميل كبير (بوت): منذ {last_large:.0f} ثانية")
+        
+        if st.session_state.last_user_session_download > 0:
+            last_user = time.time() - st.session_state.last_user_session_download
+            st.text(f"🔥 آخر تحميل (جلسة المستخدم): منذ {last_user:.0f} ثانية")
+        
+        st.markdown("### 🔥 إدارة جلسة المستخدم")
+        
+        if not (USER_API_ID and USER_API_HASH):
+            st.warning("⚠️ لتفعيل التحميل الكامل، أضف في Streamlit Cloud Secrets:")
+            st.code("""
+user_api_id = "12345678"
+user_api_hash = "your_api_hash_here"
+user_session_string = "your_session_string_here"
+            """, language="toml")
+            
+            with st.expander("📖 كيفية الحصول على البيانات"):
+                st.markdown("""
+                **1. احصل على API Credentials:**
+                - اذهب إلى: https://my.telegram.org
+                - سجل دخول برقم هاتفك
+                - اختر "API Development Tools"
+                - سجل تطبيق جديد
+                - انسخ `api_id` و `api_hash`
+                
+                **2. احصل على Session String:**
+                - على جهازك، ثبت: `pip install telethon`
+                - شغل السكريبت التالي:
+                
+                ```python
+                from telethon.sync import TelegramClient
+                from telethon.sessions import StringSession
+                
+                API_ID = "12345678"
+                API_HASH = "your_hash"
+                
+                with TelegramClient(StringSession(), API_ID, API_HASH) as client:
+                    print("Session String:")
+                    print(client.session.save())
+                ```
+                
+                - سيطلب منك رقم الهاتف وكود التحقق
+                - انسخ Session String الذي سيظهر
+                - أضفه في Streamlit Cloud Secrets
+                """)
+        
+        elif not USER_SESSION_AVAILABLE:
+            st.warning("⚠️ Session String غير موجود")
+            st.info("💡 أضف user_session_string في Streamlit Cloud Secrets")
+        
+        else:
+            st.success(f"✅ جلسة المستخدم نشطة!")
+            
+            if st.button("📋 عرض Session String", use_container_width=True):
+                st.code(USER_SESSION_STRING, language="text")
+                st.warning("⚠️ لا تشارك هذا النص مع أحد!")
+        
         st.markdown("### 📊 إدارة قاعدة البيانات")
         col_db1, col_db2 = st.columns(2)
         
@@ -592,7 +1106,6 @@ if st.session_state.is_admin:
         
         st.markdown('</div>', unsafe_allow_html=True)
 
-# منطقة البحث
 if not st.session_state.session_id and not st.session_state.is_admin:
     if not can_start:
         wait_time = SESSION_TIMEOUT // 60
@@ -614,7 +1127,6 @@ if not st.session_state.session_id and not st.session_state.is_admin:
         st.markdown('<h1 class="main-title">ابحث في مكتبتك الرقمية</h1>', unsafe_allow_html=True)
         st.info("🔔 يرجى بدء جلسة أولاً للبحث والتحميل")
 else:
-    # معلومات الجلسة
     if st.session_state.session_id:
         elapsed = int(current_time - st.session_state.session_start_time)
         remaining = SESSION_TIMEOUT - elapsed
@@ -628,7 +1140,6 @@ else:
     
     st.markdown('<h1 class="main-title">🔍 ابحث في مكتبتك الرقمية</h1>', unsafe_allow_html=True)
     
-    # الفلاتر المتقدمة
     with st.expander("⚙️ فلاتر متقدمة", expanded=False):
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -647,7 +1158,6 @@ else:
         with col4:
             limit = st.selectbox("عدد النتائج", [20, 50, 100], index=0, key="limit")
     
-    # صندوق البحث
     col_search, col_btn = st.columns([4, 1])
     with col_search:
         search_query = st.text_input(
@@ -659,18 +1169,15 @@ else:
     with col_btn:
         search_clicked = st.button("بحث", type="primary", use_container_width=True, key="search_btn")
     
-    # اقتراحات تلقائية
     if search_query and len(search_query) >= 2 and not search_clicked:
         suggestions = get_autocomplete_suggestions(search_query)
         if suggestions:
             st.info(f"💡 اقتراحات: {' • '.join(suggestions[:3])}")
     
-    # عمليات البحث الشائعة
     popular = get_popular_searches(5)
     if popular and not search_query:
         st.markdown("**🔥 الأكثر بحثاً:** " + " • ".join([f"`{s}`" for s in popular]))
     
-    # تنفيذ البحث
     if (search_query and len(search_query) >= 2) or search_clicked:
         filters = {
             'format': selected_format if selected_format != 'all' else None,
@@ -684,11 +1191,9 @@ else:
             st.session_state.search_results = results
             update_session_activity('search')
         
-        # عرض النتائج
         if results:
             st.success(f"✨ تم العثور على {len(results)} نتيجة")
             
-            # خيارات الترتيب
             sort_option = st.radio(
                 "ترتيب حسب:",
                 ["الصلة", "الاسم", "الحجم", "الصفحات"],
@@ -696,7 +1201,6 @@ else:
                 key="sort_option"
             )
             
-            # ترتيب النتائج
             if sort_option == "الاسم":
                 results = sorted(results, key=lambda x: x.get('file_name', ''))
             elif sort_option == "الحجم":
@@ -704,7 +1208,6 @@ else:
             elif sort_option == "الصفحات":
                 results = sorted(results, key=lambda x: x.get('pages') or 0, reverse=True)
             
-            # عرض النتائج
             for row in results:
                 render_book_card(row)
         else:
