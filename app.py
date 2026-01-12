@@ -320,50 +320,49 @@ def check_cooldowns(file_size_mb):
 
 def download_via_bot(file_id, file_name):
     """
-    التحميل باستخدام Bot API مع إعادة محاولة ذكية
+    التحميل باستخدام Bot API (معدل ليدعم المعرفات الجديدة)
     """
     try:
+        if not file_id: return None
+        
         bot_token = get_best_bot()
         
-        with st.spinner(f"📥 البوت يحمّل: {file_name[:30]}..."):
-            # الحصول على معلومات الملف
-            file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile"
-            response = requests.get(file_info_url, params={"file_id": file_id}, timeout=30)
+        # 1. الحصول على معلومات الملف باستخدام file_id الجديد
+        # نستخدم timeout قصير للتحقق السريع
+        file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile"
+        response = requests.get(file_info_url, params={"file_id": file_id}, timeout=10)
+        
+        if response.status_code != 200:
+            # طباعة الخطأ في الكونسول للمطور (Logs)
+            print(f"⚠️ Bot getFile Error ({response.status_code}): {response.text}")
+            return None
+        
+        result = response.json()
+        if not result.get("ok"):
+            return None
+        
+        file_path = result.get("result", {}).get("file_path")
+        if not file_path: return None
+        
+        # 2. تحميل المحتوى الفعلي
+        download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+        file_response = requests.get(download_url, stream=True, timeout=60)
+        
+        if file_response.status_code == 200:
+            file_data = io.BytesIO()
+            total_size = 0
+            for chunk in file_response.iter_content(chunk_size=8192):
+                file_data.write(chunk)
+                total_size += len(chunk)
             
-            if response.status_code != 200:
-                if st.session_state.get('is_admin'):
-                    st.warning(f"⚠️ Bot getFile فشل: HTTP {response.status_code}")
-                return None
-            
-            result = response.json()
-            if not result.get("ok"):
-                if st.session_state.get('is_admin'):
-                    st.warning(f"⚠️ Bot Error: {result.get('description', 'Unknown')}")
-                return None
-            
-            file_path = result.get("result", {}).get("file_path")
-            if not file_path:
-                return None
-            
-            # تحميل الملف
-            download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-            file_response = requests.get(download_url, stream=True, timeout=90)
-            
-            if file_response.status_code == 200:
-                file_data = io.BytesIO()
-                total_size = 0
-                for chunk in file_response.iter_content(chunk_size=8192):
-                    file_data.write(chunk)
-                    total_size += len(chunk)
-                
-                if total_size > 100:  # تأكد أن الملف ليس فارغاً
-                    return file_data.getvalue()
+            if total_size > 0:
+                return file_data.getvalue()
         
         return None
     
     except Exception as e:
-        if st.session_state.get('is_admin'):
-            st.warning(f"⚠️ Bot Exception: {str(e)[:100]}")
+        # طباعة الخطأ للمتابعة
+        print(f"❌ Bot Exception: {e}")
         return None
 
 def download_via_telethon(message_id, file_name):
