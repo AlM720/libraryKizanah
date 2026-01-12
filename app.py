@@ -291,7 +291,7 @@ def search_books_advanced(query, filters=None, limit=50):
         except: return []
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد
+# 📥 منطق التحميل الموحد (المُعدَّل)
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -318,78 +318,178 @@ def check_cooldowns(file_size_mb):
     if elapsed < req_interval: return False, req_interval - elapsed, "bot"
     return True, 0, "bot"
 
-def unified_downloader(message_id, file_name, file_size_mb, file_ext):
+def download_via_bot(file_id, file_name):
+    """
+    التحميل باستخدام Bot API (للملفات الصغيرة والمتوسطة)
+    """
+    try:
+        bot_token = get_best_bot()
+        
+        with st.spinner(f"📥 جاري التحميل: {file_name[:30]}..."):
+            # الحصول على معلومات الملف
+            file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile"
+            response = requests.get(file_info_url, params={"file_id": file_id}, timeout=30)
+            
+            if response.status_code != 200:
+                return None
+            
+            file_path = response.json().get("result", {}).get("file_path")
+            if not file_path:
+                return None
+            
+            # تحميل الملف
+            download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
+            file_response = requests.get(download_url, stream=True, timeout=60)
+            
+            if file_response.status_code == 200:
+                file_data = io.BytesIO()
+                for chunk in file_response.iter_content(chunk_size=8192):
+                    file_data.write(chunk)
+                
+                return file_data.getvalue()
+        
+        return None
+    
+    except Exception as e:
+        if st.session_state.get('is_admin'):
+            st.warning(f"⚠️ Bot API فشل: {e}")
+        return None
+
+def download_via_telethon(message_id, file_name):
+    """
+    التحميل باستخدام Telethon User Session (للملفات الكبيرة)
+    """
+    if not USER_SESSION_AVAILABLE:
+        return None
+    
+    try:
+        # ═══════════════════════════════════════════════════════
+        # ✅ بداية التعديل: إضافة Event Loop لإصلاح الخطأ
+        # ═══════════════════════════════════════════════════════
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        # ═══════════════════════════════════════════════════════
+        # 🏁 نهاية التعديل
+        # ═══════════════════════════════════════════════════════
+
+        from telethon.sync import TelegramClient
+        from telethon.sessions import StringSession
+        
+        with st.spinner(f"☁️ جلب من السحابة: {file_name[:30]}..."):
+            client = TelegramClient(
+                StringSession(USER_SESSION_STRING),
+                USER_API_ID,
+                USER_API_HASH
+            )
+            
+            with client:
+                message = client.get_messages(CHANNEL_ID, ids=int(message_id))
+                
+                if not message or not message.media:
+                    return None
+                
+                file_buffer = io.BytesIO()
+                client.download_media(message, file=file_buffer)
+                
+                return file_buffer.getvalue()
+    
+    except Exception as e:
+        if st.session_state.get('is_admin'):
+            st.error(f"❌ Telethon فشل: {e}")
+        return None
+
+def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=None):
+    """
+    التحميل الموحد - يدعم Bot API و Telethon مع التعاقب الذكي
+    """
     if st.session_state.downloading_now:
         st.warning("⏳ انتظر انتهاء التحميل الحالي...")
         return None
+    
     can_download, wait_time, method = check_cooldowns(file_size_mb)
+    
     if not can_download:
         if method == "unavailable":
-            st.error("الملف غير متاح حالياً.")
+            st.error("❌ الملف كبير جداً - تحتاج جلسة مستخدم مفعّلة")
             return None
+        
         msg_holder = st.empty()
         for i in range(int(wait_time), 0, -1):
             msg_holder.info(f"🔄 يرجى الانتظار {i} ثواني...")
             time.sleep(1)
         msg_holder.empty()
+    
     st.session_state.downloading_now = True
+    
     try:
         file_data = None
-        if method == "user_session" or file_size_mb >= LARGE_FILE_THRESHOLD_MB:
+        
+        # ═══════════════════════════════════════════════════════
+        # استراتيجية التحميل الذكية مع التعاقب
+        # ═══════════════════════════════════════════════════════
+        
+        # 1️⃣ ملفات كبيرة جداً (>20MB) - Telethon فقط
+        if file_size_mb >= 20:
             if not USER_SESSION_AVAILABLE:
-                st.error("خاصية التحميل الكبير غير مفعلة.")
+                st.error("❌ جلسة المستخدم غير مفعّلة - لا يمكن تحميل ملفات كبيرة")
                 return None
             
-            # -----------------------------------------------
-            # ✅ بداية التعديل: إضافة Event Loop لإصلاح خطأ Telethon
-            # -----------------------------------------------
-            import asyncio
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-            # -----------------------------------------------
-            # 🏁 نهاية التعديل
-            # -----------------------------------------------
-
-            from telethon.sync import TelegramClient
-            from telethon.sessions import StringSession
-            with st.spinner("📥 جلب الملف من السحابة..."):
-                try:
-                    client = TelegramClient(StringSession(USER_SESSION_STRING), USER_API_ID, USER_API_HASH)
-                    with client:
-                        message = client.get_messages(CHANNEL_ID, ids=int(message_id))
-                        if message and message.media:
-                            file_buffer = io.BytesIO()
-                            client.download_media(message, file=file_buffer)
-                            file_data = file_buffer.getvalue()
-                        else:
-                            st.error("لم يتم العثور على الملف في القناة.")
-                            return None
+            file_data = download_via_telethon(message_id, file_name)
+            if file_data:
+                st.session_state.last_user_session_download = time.time()
+                st.session_state.user_session_downloads_count += 1
+        
+        # 2️⃣ ملفات متوسطة (5-20MB) - نحاول Bot ثم Telethon كـ fallback
+        elif file_size_mb >= LARGE_FILE_THRESHOLD_MB:
+            # محاولة Bot أولاً (للحفاظ على التعاقب)
+            if file_id:
+                file_data = download_via_bot(file_id, file_name)
+                if file_data:
+                    st.session_state.last_large_download_time = time.time()
+            
+            # إذا فشل Bot، نستخدم Telethon
+            if not file_data and USER_SESSION_AVAILABLE:
+                file_data = download_via_telethon(message_id, file_name)
+                if file_data:
                     st.session_state.last_user_session_download = time.time()
                     st.session_state.user_session_downloads_count += 1
-                except Exception as e:
-                    st.error(f"فشل الجلب من السحابة: {e}")
-                    return None
+        
+        # 3️⃣ ملفات صغيرة (<5MB) - Bot API فقط
         else:
-            st.warning("⚠️ Bot API لا يدعم message_id - استخدم Telethon للملفات الكبيرة")
-            return None
+            if file_id:
+                file_data = download_via_bot(file_id, file_name)
+                if file_data:
+                    st.session_state.last_download_time = time.time()
+            else:
+                st.error("❌ file_id غير متوفر في القاعدة")
+                return None
+        
+        # ═══════════════════════════════════════════════════════
+        # المعالجة النهائية
+        # ═══════════════════════════════════════════════════════
+        
         if file_data:
             st.session_state.downloads_count += 1
-            if not file_name.endswith(f'.{file_ext}'): file_name = f"{file_name}.{file_ext}"
+            if not file_name.endswith(f'.{file_ext}'):
+                file_name = f"{file_name}.{file_ext}"
             return file_data, file_name
         else:
-            st.error("خطأ في الاتصال.")
-            return None, None
+            st.error("❌ فشل التحميل من جميع المصادر")
+            return None
+    
     except Exception as e:
-        st.error(f"حدث خطأ غير متوقع: {e}")
-        return None, None
+        st.error(f"❌ خطأ غير متوقع: {e}")
+        return None
+    
     finally:
         st.session_state.downloading_now = False
 
 # ═══════════════════════════════════════════════════════════════
-# 🖥️ الواجهة والعرض (تم الإصلاح الجذري هنا)
+# 🖥️ الواجهة والعرض
 # ═══════════════════════════════════════════════════════════════
 
 def render_book_card_clean(row):
@@ -409,12 +509,9 @@ def render_book_card_clean(row):
     if desc:
         desc = re.sub(r'http\S+', '', desc)
         desc = re.sub(r'@\w+', '', desc)
-        # استخدام html.escape لضمان عدم وجود أكواد تكسر الصفحة
         safe_desc = html.escape(desc[:250])
         desc_html = f'<div class="book-desc">{safe_desc}...</div>'
 
-    # ✅ التغيير الجذري: دمج كل HTML في سطر واحد فقط بدون أي مسافات بادئة أو جديدة
-    # هذا يمنع Streamlit من اعتباره كوداً برمجياً
     card_html = f"""<div class="book-card"><div class="book-title">📖 {row.get('file_name', 'بدون عنوان')}</div><div class="book-meta"><span class="meta-item" style="color: #0e7490; background: #cffafe;">📂 {file_ext.upper()}</span><span class="meta-item">💾 {file_size_mb:.2f} MB</span>{pages_html}</div>{desc_html}</div>"""
     
     st.markdown(card_html, unsafe_allow_html=True)
@@ -425,7 +522,13 @@ def render_book_card_clean(row):
             st.warning("⚠️ كبير جداً")
         else:
             if st.button("⬇️ تحميل", key=f"btn_{row['id']}", use_container_width=True, type="primary"):
-                result = unified_downloader(row['message_id'], row['file_name'], file_size_mb, file_ext)
+                result = unified_downloader(
+                    row['message_id'], 
+                    row['file_name'], 
+                    file_size_mb, 
+                    file_ext,
+                    row.get('file_id')
+                )
                 if result:
                     data, name = result
                     st.download_button("💾 حفظ", data, name, mime='application/octet-stream', key=f"dl_{row['id']}", use_container_width=True)
@@ -443,7 +546,7 @@ for sid in list(st.session_state.active_sessions.keys()):
 active_count = len(st.session_state.active_sessions)
 max_allowed = 15
 
-# ✅ إصلاح الشريط العلوي بدمجه في سطر واحد
+# الشريط العلوي
 admin_badge = '<span class="status-active">👑 مشرف</span>' if st.session_state.is_admin else ''
 visitor_badge = f'<span style="color:#0e7490; font-weight:bold;">الزوار: {active_count}</span>' if st.session_state.show_counter else ''
 toolbar_html = f"""<div class="toolbar-container"><div class="app-title">🏛️ المكتبة الرقمية</div><div style="display: flex; gap: 10px; align-items: center;">{admin_badge}{visitor_badge}</div></div><div style="margin-top: 90px;"></div>"""
@@ -496,6 +599,9 @@ else:
             st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
             st.write(f"الجلسات: {len(st.session_state.active_sessions)}")
             st.write(f"حجم القاعدة: {st.session_state.db_size:.2f} MB")
+            st.write(f"التحميلات الكلية: {st.session_state.downloads_count}")
+            st.write(f"تحميلات البوت: {st.session_state.downloads_count - st.session_state.user_session_downloads_count}")
+            st.write(f"تحميلات Telethon: {st.session_state.user_session_downloads_count}")
             if st.button("تصفير الجلسات"):
                 st.session_state.active_sessions = {}
                 st.success("تم")
