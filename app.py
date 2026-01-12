@@ -4,7 +4,7 @@ import requests
 import time
 import os
 import shutil
-import gdown
+# import gdown  <-- لم نعد بحاجة له للتحميل، سنستخدم requests الأقوى
 from datetime import datetime, timedelta
 import hashlib
 import re
@@ -67,8 +67,7 @@ try:
     USER_API_HASH = st.secrets.get("user_api_hash", "")
     USER_SESSION_STRING = st.secrets.get("user_session_string", "")
     
-    # 👇👇👇 جلب معرفات الأجزاء من الأسرار 👇👇👇
-    # يجب أن تكون في الأسرار تحت قسم [db_parts]
+    # جلب معرفات الأجزاء
     if "db_parts" in st.secrets:
         DB_PARTS = dict(st.secrets["db_parts"])
     else:
@@ -108,8 +107,38 @@ for key in ['active_sessions', 'bot_requests', 'session_id', 'is_admin', 'show_c
 USER_SESSION_AVAILABLE = bool(USER_API_ID and USER_API_HASH and USER_SESSION_STRING)
 
 # ═══════════════════════════════════════════════════════════════
-# 🛠️ دوال تحميل ودمج قاعدة البيانات
+# 🛠️ دوال التحميل المتقدمة (تجاوز تحذير الفيروسات)
 # ═══════════════════════════════════════════════════════════════
+
+def get_confirm_token(response):
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            return value
+    return None
+
+def download_file_robust(file_id, destination):
+    """
+    دالة قوية لتحميل الملفات الكبيرة من Drive عبر استخراج رمز التأكيد
+    """
+    URL = "https://docs.google.com/uc?export=download"
+    session = requests.Session()
+    
+    try:
+        response = session.get(URL, params={'id': file_id}, stream=True)
+        token = get_confirm_token(response)
+
+        if token:
+            params = {'id': file_id, 'confirm': token}
+            response = session.get(URL, params=params, stream=True)
+
+        with open(destination, "wb") as f:
+            for chunk in response.iter_content(32768):
+                if chunk: 
+                    f.write(chunk)
+        return True
+    except Exception as e:
+        st.error(f"فشل الاتصال أثناء تحميل الملف: {e}")
+        return False
 
 def download_specific_files(file_map, output_dir):
     if os.path.exists(output_dir):
@@ -118,28 +147,33 @@ def download_specific_files(file_map, output_dir):
     
     downloaded_files = []
     
-    for filename, file_id in file_map.items():
-        # التأكد من أن الاسم ينتهي بـ .db لإضافته إذا لزم الأمر
+    progress_text = st.empty()
+    
+    for i, (filename, file_id) in enumerate(file_map.items()):
         if not filename.endswith('.db'): filename += ".db"
-        
         output_path = os.path.join(output_dir, filename)
-        url = f'https://drive.google.com/uc?id={file_id}'
         
-        try:
-            # استخدام fuzzy=True ضروري لتخطي صفحة الفيروسات
-            gdown.download(url, output_path, quiet=True, fuzzy=True)
-            
-            # التحقق البسيط من الهيدر للتأكد أنه SQLite وليس HTML
-            if os.path.exists(output_path):
+        progress_text.info(f"⏳ جاري تحميل الجزء {i+1} من {len(file_map)}: {filename}...")
+        
+        # استخدام الدالة القوية الجديدة
+        success = download_file_robust(file_id, output_path)
+        
+        if success and os.path.exists(output_path):
+            # التحقق من أن الملف قاعدة بيانات سليمة وليس HTML
+            try:
                 with open(output_path, 'rb') as f:
                     header = f.read(16)
                     if b'SQLite format 3' in header:
                         downloaded_files.append(output_path)
+                        st.toast(f"✅ تم تحميل {filename}")
                     else:
-                        st.warning(f"⚠️ الملف {filename} تم تحميله كصفحة ويب (تأكد من الصلاحيات).")
-        except Exception as e:
-            st.warning(f"فشل تحميل {filename}: {e}")
+                        st.warning(f"⚠️ الملف {filename} تم تحميله لكنه يبدو تالفاً أو صفحة ويب.")
+            except:
+                st.warning(f"خطأ في قراءة الملف {filename}")
+        else:
+            st.warning(f"فشل تحميل الملف {filename}")
             
+    progress_text.empty()
     return downloaded_files
 
 def merge_databases(db_files, output_file):
@@ -204,7 +238,6 @@ def merge_databases(db_files, output_file):
         return 0, 0
 
 def init_db():
-    # التحقق من وجود قاعدة مدمجة صالحة مسبقاً
     if os.path.exists(DATABASE_FILE) and os.path.getsize(DATABASE_FILE) > 102400:
         if time.time() - os.path.getmtime(DATABASE_FILE) < DB_CACHE_TIME:
             try:
@@ -218,14 +251,14 @@ def init_db():
                 pass 
 
     if not DB_PARTS:
-        st.error("⚠️ لم يتم العثور على أي معرفات ملفات في الأسرار.")
+        st.error("⚠️ لا توجد ملفات للتحميل في الأسرار.")
         return False
 
-    with st.spinner("📦 جاري تحميل ودمج المكتبة من الأسرار..."):
+    with st.spinner("📦 جاري تحميل المكتبة (قد يستغرق وقتاً بسبب الحجم)..."):
         db_files = download_specific_files(DB_PARTS, DB_TEMP_DIR)
         
         if not db_files:
-            st.error("❌ لم يتم تحميل أي ملف قاعدة بيانات صالح.")
+            st.error("❌ فشل تحميل جميع الملفات.")
             return False
             
         files_merged, total_records = merge_databases(db_files, DATABASE_FILE)
@@ -234,12 +267,10 @@ def init_db():
             st.session_state.db_loaded = True
             st.session_state.db_last_update = time.time()
             st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
-            
-            # تنظيف الملفات المؤقتة
             try: shutil.rmtree(DB_TEMP_DIR)
             except: pass
             
-            st.success(f"✅ تم دمج {files_merged} أجزاء بنجاح! ({total_records} كتاب)")
+            st.success(f"✅ تم بناء المكتبة: {files_merged} أجزاء، {total_records} كتاب.")
             time.sleep(1)
             st.rerun()
             return True
