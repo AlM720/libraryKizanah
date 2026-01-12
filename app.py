@@ -213,19 +213,25 @@ def get_db_connection():
         return conn
     except: return None
 
+# --- بداية التعديل: دوال البحث المحسنة ---
+
 def normalize_arabic_text(text):
+    """
+    تنظيف النص لإزالة الرموز فقط، ليتوافق مع طريقة تخزين البيانات في العمود normalized_name
+    """
     if not text: return ""
-    text = re.sub(r'[\u064B-\u065F]', '', text)
-    text = re.sub(r'[إأآا]', 'ا', text)
-    text = re.sub(r'[ىي]', 'ي', text)
-    text = re.sub(r'ة', 'ه', text)
+    # إبقاء الأحرف والأرقام فقط، واستبدال الرموز بمسافات
     text = re.sub(r'[^\w\s]', ' ', text)
-    return ' '.join(text.split()).lower().strip()
+    return ' '.join(text.split()).strip().lower()
 
 def search_books_advanced(query, filters=None, limit=50):
     if not query or len(query) < 2: return []
     filters = filters or {}
-    words = [w for w in normalize_arabic_text(query).split() if len(w) > 1]
+    
+    # تنظيف عبارة البحث
+    clean_query = normalize_arabic_text(query)
+    words = [w for w in clean_query.split() if len(w) > 1]
+    
     if not words: return []
     
     conn = get_db_connection()
@@ -235,9 +241,13 @@ def search_books_advanced(query, filters=None, limit=50):
         cursor = conn.cursor()
         sql_parts, params = [], []
         conditions = []
+        
         for word in words:
-            conditions.append("(file_name LIKE ? OR description LIKE ?)")
-            params.extend([f'%{word}%', f'%{word}%'])
+            # ✅ البحث في 3 أماكن: الاسم الأصلي، الاسم المنظف، الوصف المنظف
+            conditions.append("(file_name LIKE ? OR normalized_name LIKE ? OR normalized_desc LIKE ?)")
+            # نكرر الكلمة 3 مرات للمتغيرات الثلاثة
+            params.extend([f'%{word}%', f'%{word}%', f'%{word}%'])
+            
         sql_parts.append("(" + " AND ".join(conditions) + ")")
         
         if filters.get('format') and filters['format'] != 'all':
@@ -245,11 +255,22 @@ def search_books_advanced(query, filters=None, limit=50):
             params.append(filters['format'])
             
         where = " AND ".join(sql_parts)
-        cursor.execute(f"SELECT * FROM books WHERE {where} LIMIT ?", params + [limit * 2])
+        
+        # ترتيب النتائج: الأقصر اسماً أولاً + الأحدث
+        sql = f"""
+            SELECT * FROM books 
+            WHERE {where} 
+            ORDER BY length(normalized_name) ASC, message_id DESC 
+            LIMIT ?
+        """
+        
+        cursor.execute(sql, params + [limit])
         results = [dict(r) for r in cursor.fetchall()]
         conn.close()
-        return results[:limit]
+        return results
     except: return []
+
+# --- نهاية التعديل ---
 
 # ═══════════════════════════════════════════════════════════════
 # 📥 منطق التحميل (Hidden from User)
@@ -428,7 +449,7 @@ for sid in list(st.session_state.active_sessions.keys()):
 active_count = len(st.session_state.active_sessions)
 max_allowed = 15
 
-# --- منطقة الشريط العلوي (تم الإصلاح هنا) ---
+# --- منطقة الشريط العلوي ---
 st.markdown(f"""
 <div class="toolbar">
     <div class="app-title">🏛️ المكتبة الرقمية</div>
