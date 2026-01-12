@@ -288,7 +288,7 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
     
     if st.session_state.downloading_now:
         st.warning("⏳ يرجى الانتظار، هناك ملف قيد التحميل حالياً.")
-        return None
+        return None, None  # ✅ FIXED: return tuple
 
     # التحقق من الإتاحة
     can_download, wait_time, method = check_cooldowns(file_size_mb)
@@ -296,7 +296,7 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
     if not can_download:
         if method == "unavailable":
             st.error("عذراً، هذا الملف غير متاح للتحميل المباشر حالياً.")
-            return None
+            return None, None  # ✅ FIXED: return tuple
         
         # رسالة انتظار لطيفة
         msg_holder = st.empty()
@@ -314,7 +314,7 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
         if method == "user_session" or (method == "bot" and file_size_mb > 20):
             if not USER_SESSION_AVAILABLE:
                 st.error("عذراً، الملف كبير جداً ولا يمكن تحميله حالياً.")
-                return None
+                return None, None  # ✅ FIXED: return tuple
                 
             from telethon.sync import TelegramClient
             from telethon.sessions import StringSession
@@ -334,6 +334,7 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
                 except Exception as e:
                     st.error("تعذر جلب الملف. يرجى المحاولة لاحقاً.")
                     if st.session_state.is_admin: st.error(str(e))
+                    return None, None  # ✅ FIXED: return tuple
         
         # Scenario 2: ملف عادي (Use Bot API)
         else:
@@ -354,14 +355,14 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
         if file_data:
             st.session_state.downloads_count += 1
             if not file_name.endswith(f'.{file_ext}'): file_name = f"{file_name}.{file_ext}"
-            return file_data, file_name
+            return file_data, file_name  # ✅ FIXED: return tuple
         else:
             st.error("حدث خطأ أثناء الاتصال بالخادم.")
-            return None, None
+            return None, None  # ✅ FIXED: return tuple
             
     except Exception as e:
         st.error("حدث خطأ غير متوقع.")
-        return None, None
+        return None, None  # ✅ FIXED: return tuple
     finally:
         st.session_state.downloading_now = False
 
@@ -400,7 +401,7 @@ def render_book_card_clean(row):
         else:
             if st.button("⬇️ تحميل الكتاب", key=f"btn_{row['id']}", use_container_width=True, type="primary"):
                 data, name = unified_downloader(row['file_id'], row['file_name'], file_size_mb, file_ext)
-                if data:
+                if data and name:  # ✅ FIXED: check both values
                     st.download_button(
                         label="💾 حفظ الملف في جهازك",
                         data=data,
@@ -428,7 +429,7 @@ for sid in list(st.session_state.active_sessions.keys()):
 active_count = len(st.session_state.active_sessions)
 max_allowed = 15
 
-# --- منطقة الشريط العلوي (تم الإصلاح هنا) ---
+# --- منطقة الشريط العلوي ---
 st.markdown(f"""
 <div class="toolbar">
     <div class="app-title">🏛️ المكتبة الرقمية</div>
@@ -439,7 +440,6 @@ st.markdown(f"""
 </div>
 <div style="margin-top: 90px;"></div>
 """, unsafe_allow_html=True)
-# ----------------------------------------------
 
 # صفحة الدخول (غرفة الانتظار)
 if not st.session_state.session_id and not st.session_state.is_admin:
