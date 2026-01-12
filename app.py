@@ -213,14 +213,10 @@ def get_db_connection():
         return conn
     except: return None
 
-# --- بداية التعديل: دوال البحث المحسنة ---
+# --- الدوال المحدثة (البحث الذكي) ---
 
 def normalize_arabic_text(text):
-    """
-    تنظيف النص لإزالة الرموز فقط، ليتوافق مع طريقة تخزين البيانات في العمود normalized_name
-    """
     if not text: return ""
-    # إبقاء الأحرف والأرقام فقط، واستبدال الرموز بمسافات
     text = re.sub(r'[^\w\s]', ' ', text)
     return ' '.join(text.split()).strip().lower()
 
@@ -228,7 +224,6 @@ def search_books_advanced(query, filters=None, limit=50):
     if not query or len(query) < 2: return []
     filters = filters or {}
     
-    # تنظيف عبارة البحث
     clean_query = normalize_arabic_text(query)
     words = [w for w in clean_query.split() if len(w) > 1]
     
@@ -239,38 +234,60 @@ def search_books_advanced(query, filters=None, limit=50):
     
     try:
         cursor = conn.cursor()
+        
+        # 🕵️‍♂️ فحص ذكي للأعمدة الموجودة
+        cursor.execute("PRAGMA table_info(books)")
+        columns_info = cursor.fetchall()
+        existing_columns = [col[1] for col in columns_info]
+        
+        search_targets = []
+        if 'file_name' in existing_columns: search_targets.append('file_name')
+        if 'normalized_name' in existing_columns: search_targets.append('normalized_name')
+        if 'normalized_desc' in existing_columns: search_targets.append('normalized_desc')
+        if 'description' in existing_columns and 'normalized_desc' not in existing_columns: 
+            search_targets.append('description')
+
+        if not search_targets: return []
+
         sql_parts, params = [], []
-        conditions = []
         
         for word in words:
-            # ✅ البحث في 3 أماكن: الاسم الأصلي، الاسم المنظف، الوصف المنظف
-            conditions.append("(file_name LIKE ? OR normalized_name LIKE ? OR normalized_desc LIKE ?)")
-            # نكرر الكلمة 3 مرات للمتغيرات الثلاثة
-            params.extend([f'%{word}%', f'%{word}%', f'%{word}%'])
+            word_conditions = []
+            for col in search_targets:
+                word_conditions.append(f"{col} LIKE ?")
+                params.append(f'%{word}%')
             
-        sql_parts.append("(" + " AND ".join(conditions) + ")")
-        
-        if filters.get('format') and filters['format'] != 'all':
-            sql_parts.append("file_extension = ?")
-            params.append(filters['format'])
+            if word_conditions:
+                sql_parts.append("(" + " OR ".join(word_conditions) + ")")
             
         where = " AND ".join(sql_parts)
         
-        # ترتيب النتائج: الأقصر اسماً أولاً + الأحدث
-        sql = f"""
-            SELECT * FROM books 
-            WHERE {where} 
-            ORDER BY length(normalized_name) ASC, message_id DESC 
-            LIMIT ?
-        """
+        if filters.get('format') and filters['format'] != 'all':
+            if 'file_extension' in existing_columns:
+                where += " AND file_extension = ?"
+                params.append(filters['format'])
         
-        cursor.execute(sql, params + [limit])
+        order_clause = "message_id DESC"
+        if 'normalized_name' in existing_columns:
+            order_clause = "length(normalized_name) ASC, message_id DESC"
+        elif 'file_name' in existing_columns:
+            order_clause = "length(file_name) ASC, message_id DESC"
+
+        sql = f"SELECT * FROM books WHERE {where} ORDER BY {order_clause} LIMIT ?"
+        params.append(limit)
+        
+        cursor.execute(sql, params)
         results = [dict(r) for r in cursor.fetchall()]
         conn.close()
         return results
-    except: return []
 
-# --- نهاية التعديل ---
+    except Exception as e:
+        if st.session_state.get('is_admin', False):
+            st.error(f"Error: {e}")
+        try:
+            cursor.execute(f"SELECT * FROM books WHERE file_name LIKE ? LIMIT ?", (f'%{query}%', limit))
+            return [dict(r) for r in cursor.fetchall()]
+        except: return []
 
 # ═══════════════════════════════════════════════════════════════
 # 📥 منطق التحميل (Hidden from User)
