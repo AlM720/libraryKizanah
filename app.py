@@ -374,6 +374,17 @@ def download_via_telethon(message_id, file_name):
         return None
     
     try:
+        # ═══════════════════════════════════════════════════════
+        # ✅ إصلاح 1: إضافة Event Loop هنا
+        # ═══════════════════════════════════════════════════════
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+        # ═══════════════════════════════════════════════════════
+
         from telethon.sync import TelegramClient
         from telethon.sessions import StringSession
         
@@ -718,6 +729,17 @@ else:
                         st.error("❌ Telethon غير مفعّل في Secrets")
                     else:
                         try:
+                            # ═══════════════════════════════════════════════════════
+                            # ✅ إصلاح 2: إضافة Event Loop هنا أيضاً لنظام الاختبار
+                            # ═══════════════════════════════════════════════════════
+                            import asyncio
+                            try:
+                                loop = asyncio.get_event_loop()
+                            except RuntimeError:
+                                loop = asyncio.new_event_loop()
+                                asyncio.set_event_loop(loop)
+                            # ═══════════════════════════════════════════════════════
+
                             from telethon.sync import TelegramClient
                             from telethon.sessions import StringSession
                             
