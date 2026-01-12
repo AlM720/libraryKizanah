@@ -62,7 +62,7 @@ try:
     BOT_TOKENS = [st.secrets["bot1"], st.secrets["bot2"], st.secrets["bot3"]]
     CHANNEL_ID = st.secrets["channelid"]
     ADMIN_PASSWORD = st.secrets["password"]
-    GDRIVE_FILE_ID = st.secrets.get("gdrive_file_id", "")
+    GDRIVE_FOLDER_ID = st.secrets.get("gdrive_folder_id", "")  # ✅ تغيير: المجلد بدلاً من ملف واحد
     USER_API_ID = st.secrets.get("user_api_id", "")
     USER_API_HASH = st.secrets.get("user_api_hash", "")
     USER_SESSION_STRING = st.secrets.get("user_session_string", "")
@@ -70,7 +70,8 @@ except:
     st.error("⚠️ خطأ في إعدادات النظام الداخلي (Secrets)")
     st.stop()
 
-DATABASE_FILE = "/tmp/books.db"
+DATABASE_FILE = "/tmp/books_merged.db"  # ✅ تغيير: قاعدة مدمجة
+DB_TEMP_DIR = "/tmp/db_files"  # ✅ جديد: مجلد مؤقت للملفات
 DB_CACHE_TIME = 3600
 SESSION_TIMEOUT = 600
 MIN_REQUEST_INTERVAL = 3
@@ -87,66 +88,198 @@ USER_SESSION_MAX_SIZE_MB = 2000
 for key in ['active_sessions', 'bot_requests', 'session_id', 'is_admin', 'show_counter', 
             'db_loaded', 'db_last_update', 'db_size', 'downloading_now', 
             'last_download_time', 'last_large_download_time', 
-            'last_user_session_download', 'user_session_downloads_count', 'downloads_count']:
+            'last_user_session_download', 'user_session_downloads_count', 'downloads_count',
+            'db_files_count']:  # ✅ جديد: عدد الملفات المحملة
     if key not in st.session_state:
         if key == 'bot_requests': st.session_state[key] = {i: [] for i in range(len(BOT_TOKENS))}
         elif key == 'active_sessions': st.session_state[key] = {}
         elif key in ['show_counter', 'is_admin', 'db_loaded', 'downloading_now']: st.session_state[key] = False
-        elif key in ['db_last_update', 'db_size', 'user_session_downloads_count', 'downloads_count']: st.session_state[key] = 0
+        elif key in ['db_last_update', 'db_size', 'user_session_downloads_count', 'downloads_count', 'db_files_count']: st.session_state[key] = 0
         else: st.session_state[key] = 0.0
 
 USER_SESSION_AVAILABLE = bool(USER_API_ID and USER_API_HASH and USER_SESSION_STRING)
 
 # ═══════════════════════════════════════════════════════════════
-# 🛠️ الدوال المساعدة وتحميل القاعدة (Gdown)
+# 🛠️ الدوال المساعدة وتحميل القواعد من المجلد (✅ الكود الجديد)
 # ═══════════════════════════════════════════════════════════════
 
-def extract_file_id(url_or_id):
+def extract_folder_id(url_or_id):
+    """استخراج معرف المجلد من رابط Google Drive"""
     if not url_or_id: return None
     if len(url_or_id) < 50 and '/' not in url_or_id: return url_or_id
-    patterns = [r'/file/d/([a-zA-Z0-9_-]+)', r'id=([a-zA-Z0-9_-]+)', r'/folders/([a-zA-Z0-9_-]+)']
+    patterns = [r'/folders/([a-zA-Z0-9_-]+)', r'id=([a-zA-Z0-9_-]+)']
     for pattern in patterns:
         match = re.search(pattern, url_or_id)
         if match: return match.group(1)
     return url_or_id
 
+def download_folder_files(folder_id, output_dir):
+    """تحميل جميع ملفات .db من المجلد"""
+    try:
+        # إنشاء المجلد المؤقت
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # استخدام gdown لتحميل المجلد
+        folder_url = f'https://drive.google.com/drive/folders/{folder_id}'
+        
+        st.info(f"📂 جاري تحميل الملفات من المجلد...")
+        gdown.download_folder(folder_url, output=output_dir, quiet=False, use_cookies=False)
+        
+        # البحث عن ملفات .db فقط
+        db_files = []
+        for root, dirs, files in os.walk(output_dir):
+            for file in files:
+                if file.endswith('.db') or file.endswith('.sqlite') or file.endswith('.sqlite3'):
+                    db_files.append(os.path.join(root, file))
+        
+        return db_files
+    except Exception as e:
+        st.error(f"خطأ في تحميل المجلد: {e}")
+        return []
+
+def merge_databases(db_files, output_file):
+    """دمج عدة قواعد بيانات في ملف واحد"""
+    try:
+        # إنشاء القاعدة المدمجة
+        merged_conn = sqlite3.connect(output_file)
+        merged_cursor = merged_conn.cursor()
+        
+        # إنشاء جدول books إذا لم يكن موجوداً
+        merged_cursor.execute("""
+            CREATE TABLE IF NOT EXISTS books (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_name TEXT,
+                description TEXT,
+                file_id TEXT,
+                message_id INTEGER,
+                size_mb REAL,
+                pages INTEGER,
+                file_extension TEXT,
+                normalized_name TEXT,
+                normalized_desc TEXT,
+                date_added TEXT
+            )
+        """)
+        
+        files_merged = 0
+        total_records = 0
+        
+        for db_file in db_files:
+            try:
+                # الاتصال بالقاعدة الحالية
+                source_conn = sqlite3.connect(db_file)
+                source_cursor = source_conn.cursor()
+                
+                # التحقق من وجود جدول books
+                source_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='books'")
+                if not source_cursor.fetchone():
+                    source_conn.close()
+                    continue
+                
+                # نسخ البيانات
+                source_cursor.execute("SELECT * FROM books")
+                columns = [description[0] for description in source_cursor.description]
+                
+                # تحضير استعلام الإدراج
+                placeholders = ','.join(['?' for _ in columns])
+                insert_sql = f"INSERT INTO books ({','.join(columns)}) VALUES ({placeholders})"
+                
+                rows = source_cursor.fetchall()
+                for row in rows:
+                    try:
+                        merged_cursor.execute(insert_sql, row)
+                        total_records += 1
+                    except sqlite3.IntegrityError:
+                        continue  # تجاهل التكرارات
+                
+                source_conn.close()
+                files_merged += 1
+                st.success(f"✅ تم دمج: {os.path.basename(db_file)} ({len(rows)} سجل)")
+                
+            except Exception as e:
+                st.warning(f"⚠️ تخطي ملف: {os.path.basename(db_file)} - {str(e)}")
+                continue
+        
+        merged_conn.commit()
+        merged_conn.close()
+        
+        return files_merged, total_records
+        
+    except Exception as e:
+        st.error(f"خطأ في دمج القواعد: {e}")
+        return 0, 0
+
 def init_db():
-    if not GDRIVE_FILE_ID: return False
+    """تحميل ودمج قواعد البيانات من المجلد"""
+    if not GDRIVE_FOLDER_ID: 
+        st.error("❌ لم يتم تحديد معرف المجلد في الأسرار")
+        return False
     
+    # التحقق من وجود قاعدة محفوظة مسبقاً
     if os.path.exists(DATABASE_FILE):
-        if os.path.getsize(DATABASE_FILE) < 102400: # 100KB
-            try: os.remove(DATABASE_FILE)
-            except: pass
-        elif time.time() - os.path.getmtime(DATABASE_FILE) < DB_CACHE_TIME:
+        file_age = time.time() - os.path.getmtime(DATABASE_FILE)
+        file_size = os.path.getsize(DATABASE_FILE)
+        
+        if file_size > 102400 and file_age < DB_CACHE_TIME:  # 100KB و أقل من ساعة
             try:
                 conn = sqlite3.connect(DATABASE_FILE)
-                conn.execute("SELECT 1 FROM books LIMIT 1")
+                cursor = conn.cursor()
+                cursor.execute("SELECT COUNT(*) FROM books")
+                count = cursor.fetchone()[0]
                 conn.close()
-                st.session_state.db_loaded = True
-                st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
-                return True
+                
+                if count > 0:
+                    st.session_state.db_loaded = True
+                    st.session_state.db_size = file_size / (1024 * 1024)
+                    return True
             except:
                 try: os.remove(DATABASE_FILE)
                 except: pass
 
+    # تحميل ملفات جديدة من المجلد
     try:
-        file_id = extract_file_id(GDRIVE_FILE_ID)
-        url = f'https://drive.google.com/uc?id={file_id}'
+        with st.spinner("📦 جاري تحميل ملفات قاعدة البيانات من Google Drive..."):
+            folder_id = extract_folder_id(GDRIVE_FOLDER_ID)
+            
+            # تنظيف المجلد المؤقت
+            if os.path.exists(DB_TEMP_DIR):
+                import shutil
+                shutil.rmtree(DB_TEMP_DIR)
+            
+            # تحميل الملفات
+            db_files = download_folder_files(folder_id, DB_TEMP_DIR)
+            
+            if not db_files:
+                st.error("❌ لم يتم العثور على ملفات قواعد بيانات في المجلد")
+                return False
+            
+            st.session_state.db_files_count = len(db_files)
+            st.info(f"📊 تم العثور على {len(db_files)} ملف قاعدة بيانات")
         
-        with st.spinner("📦 جاري تحميل قاعدة البيانات الكبيرة..."):
-            output = gdown.download(url, DATABASE_FILE, quiet=False, fuzzy=True)
+        # دمج القواعد
+        with st.spinner("🔄 جاري دمج قواعد البيانات..."):
+            files_merged, total_records = merge_databases(db_files, DATABASE_FILE)
         
-        if output and os.path.exists(DATABASE_FILE):
-            final_size = os.path.getsize(DATABASE_FILE)
-            if final_size > 102400:
-                st.session_state.db_loaded = True
-                st.session_state.db_last_update = time.time()
-                st.session_state.db_size = final_size / (1024 * 1024)
-                return True
-        
-        return False
+        if files_merged > 0 and total_records > 0:
+            st.session_state.db_loaded = True
+            st.session_state.db_last_update = time.time()
+            st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
+            st.success(f"✅ تم دمج {files_merged} ملف بنجاح! ({total_records} سجل)")
+            
+            # تنظيف الملفات المؤقتة
+            try:
+                import shutil
+                shutil.rmtree(DB_TEMP_DIR)
+            except:
+                pass
+            
+            return True
+        else:
+            st.error("❌ فشل دمج القواعد")
+            return False
+            
     except Exception as e:
-        st.error(f"حدث خطأ أثناء تحميل القاعدة: {e}")
+        st.error(f"❌ خطأ في تحميل القواعد: {e}")
         return False
 
 def get_db_connection():
@@ -261,7 +394,7 @@ def check_cooldowns(file_size_mb):
     if elapsed < req_interval: return False, req_interval - elapsed, "bot"
     return True, 0, "bot"
 
-def unified_downloader(file_id, file_name, file_size_mb, file_ext):
+def unified_downloader(message_id, file_name, file_size_mb, file_ext):
     if st.session_state.downloading_now:
         st.warning("⏳ انتظر انتهاء التحميل الحالي...")
         return None
@@ -280,7 +413,7 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
     st.session_state.downloading_now = True
     try:
         file_data = None
-        if method == "user_session" or (method == "bot" and file_size_mb > 20):
+        if method == "user_session" or file_size_mb >= LARGE_FILE_THRESHOLD_MB:
             if not USER_SESSION_AVAILABLE:
                 st.error("خاصية التحميل الكبير غير مفعلة.")
                 return None
@@ -290,28 +423,22 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
                 try:
                     client = TelegramClient(StringSession(USER_SESSION_STRING), USER_API_ID, USER_API_HASH)
                     with client:
-                        file_buffer = io.BytesIO()
-                        client.download_file(file_id, file=file_buffer)
-                        file_buffer.seek(0)
-                        file_data = file_buffer.read()
+                        message = client.get_messages(CHANNEL_ID, ids=int(message_id))
+                        if message and message.media:
+                            file_buffer = io.BytesIO()
+                            client.download_media(message, file=file_buffer)
+                            file_data = file_buffer.getvalue()
+                        else:
+                            st.error("لم يتم العثور على الملف في القناة.")
+                            return None
                     st.session_state.last_user_session_download = time.time()
                     st.session_state.user_session_downloads_count += 1
                 except Exception as e:
-                    st.error("فشل الجلب من السحابة.")
+                    st.error(f"فشل الجلب من السحابة: {e}")
+                    return None
         else:
-            bot_token = get_best_bot()
-            with st.spinner("📥 جاري التحميل..."):
-                r = requests.get(f"https://api.telegram.org/bot{bot_token}/getFile", params={'file_id': file_id})
-                if r.status_code == 200:
-                    path = r.json()['result']['file_path']
-                    dl_url = f"https://api.telegram.org/file/bot{bot_token}/{path}"
-                    file_res = requests.get(dl_url, stream=True)
-                    if file_res.status_code == 200:
-                        file_data = file_res.content
-                        if file_size_mb >= LARGE_FILE_THRESHOLD_MB:
-                            st.session_state.last_large_download_time = time.time()
-                        else:
-                            st.session_state.last_download_time = time.time()
+            st.warning("⚠️ Bot API لا يدعم message_id - استخدم Telethon للملفات الكبيرة")
+            return None
 
         if file_data:
             st.session_state.downloads_count += 1
@@ -320,14 +447,14 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
         else:
             st.error("خطأ في الاتصال.")
             return None, None
-    except:
-        st.error("حدث خطأ غير متوقع.")
+    except Exception as e:
+        st.error(f"حدث خطأ غير متوقع: {e}")
         return None, None
     finally:
         st.session_state.downloading_now = False
 
 # ═══════════════════════════════════════════════════════════════
-# 🖥️ الواجهة والعرض (تم تعديل العرض هنا)
+# 🖥️ الواجهة والعرض
 # ═══════════════════════════════════════════════════════════════
 
 def render_book_card_clean(row):
@@ -335,7 +462,6 @@ def render_book_card_clean(row):
     file_ext = row.get('file_extension', 'pdf').replace('.', '')
     pages = row.get('pages')
     
-    # 🕵️‍♂️ التعديل المطلوب: إخفاء الأيقونة إذا كانت الصفحات غير معروفة
     pages_html = ""
     if pages and str(pages).isdigit() and int(pages) > 0:
         pages_html = f'<span class="meta-item">📄 {pages} صفحة</span>'
@@ -362,8 +488,9 @@ def render_book_card_clean(row):
             st.warning("⚠️ كبير جداً")
         else:
             if st.button("⬇️ تحميل", key=f"btn_{row['id']}", use_container_width=True, type="primary"):
-                data, name = unified_downloader(row['file_id'], row['file_name'], file_size_mb, file_ext)
-                if data:
+                result = unified_downloader(row['message_id'], row['file_name'], file_size_mb, file_ext)
+                if result:
+                    data, name = result
                     st.download_button("💾 حفظ", data, name, mime='application/octet-stream', key=f"dl_{row['id']}", use_container_width=True)
                     st.balloons()
 
@@ -439,11 +566,16 @@ else:
             st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
             st.write(f"الجلسات: {len(st.session_state.active_sessions)}")
             st.write(f"حجم القاعدة: {st.session_state.db_size:.2f} MB")
+            st.write(f"عدد ملفات القاعدة المدمجة: {st.session_state.db_files_count}")  # ✅ جديد
             if st.button("تصفير الجلسات"):
                 st.session_state.active_sessions = {}
                 st.success("تم")
             if st.button("إعادة تحميل القاعدة"):
-                try: os.remove(DATABASE_FILE)
+                try: 
+                    os.remove(DATABASE_FILE)
+                    if os.path.exists(DB_TEMP_DIR):
+                        import shutil
+                        shutil.rmtree(DB_TEMP_DIR)
                 except: pass
                 st.session_state.db_loaded = False
                 st.rerun()
