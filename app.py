@@ -291,7 +291,7 @@ def search_books_advanced(query, filters=None, limit=50):
         except: return []
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد (المُعدَّل الكامل)
+# 📥 منطق التحميل الموحد
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -318,243 +318,78 @@ def check_cooldowns(file_size_mb):
     if elapsed < req_interval: return False, req_interval - elapsed, "bot"
     return True, 0, "bot"
 
-def download_via_bot(file_id, file_name):
-    """
-    التحميل باستخدام Bot API مع إعادة محاولة ذكية
-    """
-    try:
-        bot_token = get_best_bot()
-        
-        with st.spinner(f"📥 البوت يحمّل: {file_name[:30]}..."):
-            # الحصول على معلومات الملف
-            file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile"
-            response = requests.get(file_info_url, params={"file_id": file_id}, timeout=30)
-            
-            if response.status_code != 200:
-                if st.session_state.get('is_admin'):
-                    st.warning(f"⚠️ Bot getFile فشل: HTTP {response.status_code}")
-                return None
-            
-            result = response.json()
-            if not result.get("ok"):
-                if st.session_state.get('is_admin'):
-                    st.warning(f"⚠️ Bot Error: {result.get('description', 'Unknown')}")
-                return None
-            
-            file_path = result.get("result", {}).get("file_path")
-            if not file_path:
-                return None
-            
-            # تحميل الملف
-            download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
-            file_response = requests.get(download_url, stream=True, timeout=90)
-            
-            if file_response.status_code == 200:
-                file_data = io.BytesIO()
-                total_size = 0
-                for chunk in file_response.iter_content(chunk_size=8192):
-                    file_data.write(chunk)
-                    total_size += len(chunk)
-                
-                if total_size > 100:  # تأكد أن الملف ليس فارغاً
-                    return file_data.getvalue()
-        
-        return None
-    
-    except Exception as e:
-        if st.session_state.get('is_admin'):
-            st.warning(f"⚠️ Bot Exception: {str(e)[:100]}")
-        return None
-
-def download_via_telethon(message_id, file_name):
-    """
-    التحميل باستخدام Telethon User Session مع retry
-    """
-    if not USER_SESSION_AVAILABLE:
-        return None
-    
-    try:
-        from telethon.sync import TelegramClient
-        from telethon.sessions import StringSession
-        
-        with st.spinner(f"☁️ Telethon يحمّل: {file_name[:30]}..."):
-            client = TelegramClient(
-                StringSession(USER_SESSION_STRING),
-                USER_API_ID,
-                USER_API_HASH
-            )
-            
-            with client:
-                message = client.get_messages(CHANNEL_ID, ids=int(message_id))
-                
-                if not message or not message.media:
-                    if st.session_state.get('is_admin'):
-                        st.warning(f"⚠️ Telethon: رسالة {message_id} لا تحتوي ملف")
-                    return None
-                
-                file_buffer = io.BytesIO()
-                client.download_media(message, file=file_buffer)
-                
-                file_data = file_buffer.getvalue()
-                if len(file_data) > 100:  # تأكد أن الملف ليس فارغاً
-                    return file_data
-        
-        return None
-    
-    except Exception as e:
-        if st.session_state.get('is_admin'):
-            st.error(f"❌ Telethon فشل: {str(e)[:100]}")
-        return None
-
-def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=None):
-    """
-    التحميل الموحد مع توزيع ذكي لتجنب الحظر
-    
-    استراتيجية التوزيع:
-    - ملفات صغيرة (<2MB): Bot فقط (70% Bot، 30% Telethon للتنويع)
-    - ملفات متوسطة (2-10MB): Bot أولاً ثم Telethon
-    - ملفات كبيرة (10-20MB): Telethon مع محاولة Bot
-    - ملفات ضخمة (>20MB): Telethon فقط
-    """
+def unified_downloader(message_id, file_name, file_size_mb, file_ext):
     if st.session_state.downloading_now:
         st.warning("⏳ انتظر انتهاء التحميل الحالي...")
         return None
-    
     can_download, wait_time, method = check_cooldowns(file_size_mb)
-    
     if not can_download:
         if method == "unavailable":
-            st.error("❌ الملف كبير جداً - تحتاج جلسة مستخدم مفعّلة")
+            st.error("الملف غير متاح حالياً.")
             return None
-        
         msg_holder = st.empty()
         for i in range(int(wait_time), 0, -1):
-            msg_holder.info(f"🔄 انتظر {i} ثواني لتجنب الحظر...")
+            msg_holder.info(f"🔄 يرجى الانتظار {i} ثواني...")
             time.sleep(1)
         msg_holder.empty()
-    
     st.session_state.downloading_now = True
-    
     try:
         file_data = None
-        download_method_used = None
-        
-        # ═══════════════════════════════════════════════════════
-        # استراتيجية التوزيع الذكي
-        # ═══════════════════════════════════════════════════════
-        
-        # 1️⃣ ملفات ضخمة (>20MB) - Telethon فقط
-        if file_size_mb > 20:
+        if method == "user_session" or file_size_mb >= LARGE_FILE_THRESHOLD_MB:
             if not USER_SESSION_AVAILABLE:
-                st.error("❌ جلسة المستخدم مطلوبة للملفات الكبيرة")
+                st.error("خاصية التحميل الكبير غير مفعلة.")
                 return None
             
-            file_data = download_via_telethon(message_id, file_name)
-            download_method_used = "telethon"
-            if file_data:
-                st.session_state.last_user_session_download = time.time()
-                st.session_state.user_session_downloads_count += 1
-        
-        # 2️⃣ ملفات كبيرة (10-20MB) - Telethon أولاً
-        elif file_size_mb > 10:
-            # نحاول Telethon أولاً للملفات الكبيرة
-            if USER_SESSION_AVAILABLE:
-                file_data = download_via_telethon(message_id, file_name)
-                download_method_used = "telethon"
-                if file_data:
+            # -----------------------------------------------
+            # ✅ بداية التعديل: إضافة Event Loop لإصلاح خطأ Telethon
+            # -----------------------------------------------
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+            # -----------------------------------------------
+            # 🏁 نهاية التعديل
+            # -----------------------------------------------
+
+            from telethon.sync import TelegramClient
+            from telethon.sessions import StringSession
+            with st.spinner("📥 جلب الملف من السحابة..."):
+                try:
+                    client = TelegramClient(StringSession(USER_SESSION_STRING), USER_API_ID, USER_API_HASH)
+                    with client:
+                        message = client.get_messages(CHANNEL_ID, ids=int(message_id))
+                        if message and message.media:
+                            file_buffer = io.BytesIO()
+                            client.download_media(message, file=file_buffer)
+                            file_data = file_buffer.getvalue()
+                        else:
+                            st.error("لم يتم العثور على الملف في القناة.")
+                            return None
                     st.session_state.last_user_session_download = time.time()
                     st.session_state.user_session_downloads_count += 1
-            
-            # إذا فشل Telethon أو غير متاح، نجرب Bot
-            if not file_data and file_id:
-                file_data = download_via_bot(file_id, file_name)
-                download_method_used = "bot"
-                if file_data:
-                    st.session_state.last_large_download_time = time.time()
-        
-        # 3️⃣ ملفات متوسطة (2-10MB) - Bot أولاً ثم Telethon
-        elif file_size_mb > 2:
-            # نحاول Bot أولاً
-            if file_id:
-                file_data = download_via_bot(file_id, file_name)
-                download_method_used = "bot"
-                if file_data:
-                    st.session_state.last_large_download_time = time.time()
-            
-            # إذا فشل Bot، نجرب Telethon
-            if not file_data and USER_SESSION_AVAILABLE:
-                file_data = download_via_telethon(message_id, file_name)
-                download_method_used = "telethon"
-                if file_data:
-                    st.session_state.user_session_downloads_count += 1
-        
-        # 4️⃣ ملفات صغيرة (<2MB) - توزيع 70% Bot / 30% Telethon
+                except Exception as e:
+                    st.error(f"فشل الجلب من السحابة: {e}")
+                    return None
         else:
-            # توزيع عشوائي لتقليل الضغط
-            use_bot_first = (st.session_state.downloads_count % 10) < 7  # 70% Bot
-            
-            if use_bot_first and file_id:
-                file_data = download_via_bot(file_id, file_name)
-                download_method_used = "bot"
-                if file_data:
-                    st.session_state.last_download_time = time.time()
-                
-                # إذا فشل Bot، نجرب Telethon
-                if not file_data and USER_SESSION_AVAILABLE:
-                    file_data = download_via_telethon(message_id, file_name)
-                    download_method_used = "telethon"
-                    if file_data:
-                        st.session_state.user_session_downloads_count += 1
-            
-            elif USER_SESSION_AVAILABLE:
-                file_data = download_via_telethon(message_id, file_name)
-                download_method_used = "telethon"
-                if file_data:
-                    st.session_state.user_session_downloads_count += 1
-                
-                # إذا فشل Telethon، نجرب Bot
-                if not file_data and file_id:
-                    file_data = download_via_bot(file_id, file_name)
-                    download_method_used = "bot"
-                    if file_data:
-                        st.session_state.last_download_time = time.time()
-            
-            # آخر محاولة: Bot فقط
-            elif file_id:
-                file_data = download_via_bot(file_id, file_name)
-                download_method_used = "bot"
-                if file_data:
-                    st.session_state.last_download_time = time.time()
-        
-        # ═══════════════════════════════════════════════════════
-        # المعالجة النهائية
-        # ═══════════════════════════════════════════════════════
-        
+            st.warning("⚠️ Bot API لا يدعم message_id - استخدم Telethon للملفات الكبيرة")
+            return None
         if file_data:
             st.session_state.downloads_count += 1
-            if not file_name.endswith(f'.{file_ext}'):
-                file_name = f"{file_name}.{file_ext}"
-            
-            # عرض طريقة التحميل للمشرف
-            if st.session_state.get('is_admin') and download_method_used:
-                st.success(f"✅ تم عبر: {download_method_used.upper()}")
-            
+            if not file_name.endswith(f'.{file_ext}'): file_name = f"{file_name}.{file_ext}"
             return file_data, file_name
         else:
-            st.error("❌ فشل التحميل من جميع المصادر - تحقق من file_id أو message_id")
-            if st.session_state.get('is_admin'):
-                st.info(f"🔍 Debug: file_id={file_id}, message_id={message_id}, size={file_size_mb}MB")
-            return None
-    
+            st.error("خطأ في الاتصال.")
+            return None, None
     except Exception as e:
-        st.error(f"❌ خطأ غير متوقع: {str(e)[:150]}")
-        return None
-    
+        st.error(f"حدث خطأ غير متوقع: {e}")
+        return None, None
     finally:
         st.session_state.downloading_now = False
 
 # ═══════════════════════════════════════════════════════════════
-# 🖥️ الواجهة والعرض
+# 🖥️ الواجهة والعرض (تم الإصلاح الجذري هنا)
 # ═══════════════════════════════════════════════════════════════
 
 def render_book_card_clean(row):
@@ -574,9 +409,12 @@ def render_book_card_clean(row):
     if desc:
         desc = re.sub(r'http\S+', '', desc)
         desc = re.sub(r'@\w+', '', desc)
+        # استخدام html.escape لضمان عدم وجود أكواد تكسر الصفحة
         safe_desc = html.escape(desc[:250])
         desc_html = f'<div class="book-desc">{safe_desc}...</div>'
 
+    # ✅ التغيير الجذري: دمج كل HTML في سطر واحد فقط بدون أي مسافات بادئة أو جديدة
+    # هذا يمنع Streamlit من اعتباره كوداً برمجياً
     card_html = f"""<div class="book-card"><div class="book-title">📖 {row.get('file_name', 'بدون عنوان')}</div><div class="book-meta"><span class="meta-item" style="color: #0e7490; background: #cffafe;">📂 {file_ext.upper()}</span><span class="meta-item">💾 {file_size_mb:.2f} MB</span>{pages_html}</div>{desc_html}</div>"""
     
     st.markdown(card_html, unsafe_allow_html=True)
@@ -587,13 +425,7 @@ def render_book_card_clean(row):
             st.warning("⚠️ كبير جداً")
         else:
             if st.button("⬇️ تحميل", key=f"btn_{row['id']}", use_container_width=True, type="primary"):
-                result = unified_downloader(
-                    row['message_id'], 
-                    row['file_name'], 
-                    file_size_mb, 
-                    file_ext,
-                    row.get('file_id')
-                )
+                result = unified_downloader(row['message_id'], row['file_name'], file_size_mb, file_ext)
                 if result:
                     data, name = result
                     st.download_button("💾 حفظ", data, name, mime='application/octet-stream', key=f"dl_{row['id']}", use_container_width=True)
@@ -611,7 +443,7 @@ for sid in list(st.session_state.active_sessions.keys()):
 active_count = len(st.session_state.active_sessions)
 max_allowed = 15
 
-# الشريط العلوي
+# ✅ إصلاح الشريط العلوي بدمجه في سطر واحد
 admin_badge = '<span class="status-active">👑 مشرف</span>' if st.session_state.is_admin else ''
 visitor_badge = f'<span style="color:#0e7490; font-weight:bold;">الزوار: {active_count}</span>' if st.session_state.show_counter else ''
 toolbar_html = f"""<div class="toolbar-container"><div class="app-title">🏛️ المكتبة الرقمية</div><div style="display: flex; gap: 10px; align-items: center;">{admin_badge}{visitor_badge}</div></div><div style="margin-top: 90px;"></div>"""
@@ -662,123 +494,21 @@ else:
     if st.session_state.is_admin:
         with st.expander("🛠️ التحكم", expanded=False):
             st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
-            
-            # الإحصائيات
-            st.write("### 📊 الإحصائيات")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("الجلسات النشطة", len(st.session_state.active_sessions))
-                st.metric("حجم القاعدة", f"{st.session_state.db_size:.2f} MB")
-            with col2:
-                st.metric("إجمالي التحميلات", st.session_state.downloads_count)
-                bot_downloads = st.session_state.downloads_count - st.session_state.user_session_downloads_count
-                st.metric("تحميلات البوت", bot_downloads)
-                st.metric("تحميلات Telethon", st.session_state.user_session_downloads_count)
-            
-            # نسبة التوزيع
-            if st.session_state.downloads_count > 0:
-                bot_percentage = (bot_downloads / st.session_state.downloads_count) * 100
-                tel_percentage = (st.session_state.user_session_downloads_count / st.session_state.downloads_count) * 100
-                st.progress(bot_percentage / 100, text=f"🤖 Bot: {bot_percentage:.1f}%")
-                st.progress(tel_percentage / 100, text=f"☁️ Telethon: {tel_percentage:.1f}%")
-            
-            st.write("---")
-            
-            # اختبار الاتصال
-            st.write("### 🧪 اختبار النظام")
-            
-            test_col1, test_col2 = st.columns(2)
-            
-            with test_col1:
-                if st.button("🤖 اختبار البوتات", use_container_width=True):
-                    st.write("جاري اختبار البوتات...")
-                    working_bots = 0
-                    for i, token in enumerate(BOT_TOKENS):
-                        try:
-                            test_url = f"https://api.telegram.org/bot{token}/getMe"
-                            response = requests.get(test_url, timeout=10)
-                            if response.status_code == 200 and response.json().get("ok"):
-                                bot_name = response.json().get("result", {}).get("first_name", f"Bot {i+1}")
-                                st.success(f"✅ Bot {i+1}: {bot_name}")
-                                working_bots += 1
-                            else:
-                                st.error(f"❌ Bot {i+1}: فشل")
-                        except Exception as e:
-                            st.error(f"❌ Bot {i+1}: {str(e)[:50]}")
-                    
-                    if working_bots == len(BOT_TOKENS):
-                        st.balloons()
-                        st.success(f"🎉 جميع البوتات تعمل ({working_bots}/{len(BOT_TOKENS)})")
-                    else:
-                        st.warning(f"⚠️ {working_bots}/{len(BOT_TOKENS)} بوتات تعمل")
-            
-            with test_col2:
-                if st.button("☁️ اختبار Telethon", use_container_width=True):
-                    if not USER_SESSION_AVAILABLE:
-                        st.error("❌ Telethon غير مفعّل في Secrets")
-                    else:
-                        try:
-                            from telethon.sync import TelegramClient
-                            from telethon.sessions import StringSession
-                            
-                            st.write("جاري اختبار Telethon...")
-                            
-                            with st.spinner("الاتصال..."):
-                                client = TelegramClient(
-                                    StringSession(USER_SESSION_STRING),
-                                    USER_API_ID,
-                                    USER_API_HASH
-                                )
-                                
-                                with client:
-                                    me = client.get_me()
-                                    channel = client.get_entity(CHANNEL_ID)
-                                    
-                                    st.success(f"✅ متصل كـ: {me.first_name}")
-                                    st.success(f"✅ القناة: {channel.title}")
-                                    st.balloons()
-                        
-                        except Exception as e:
-                            st.error(f"❌ فشل: {str(e)[:100]}")
-            
-            st.write("---")
-            
-            # أوامر الإدارة
-            st.write("### ⚙️ أوامر الإدارة")
-            
-            admin_col1, admin_col2, admin_col3 = st.columns(3)
-            
-            with admin_col1:
-                if st.button("🔄 تصفير الجلسات", use_container_width=True):
-                    st.session_state.active_sessions = {}
-                    st.success("✅ تم تصفير الجلسات")
-                    st.rerun()
-            
-            with admin_col2:
-                if st.button("📊 تصفير الإحصائيات", use_container_width=True):
-                    st.session_state.downloads_count = 0
-                    st.session_state.user_session_downloads_count = 0
-                    st.success("✅ تم تصفير الإحصائيات")
-                    st.rerun()
-            
-            with admin_col3:
-                if st.button("🔃 إعادة تحميل القاعدة", use_container_width=True):
-                    try: 
-                        if os.path.exists(DATABASE_FILE):
-                            os.remove(DATABASE_FILE)
-                        if os.path.exists(DB_TEMP_DIR):
-                            shutil.rmtree(DB_TEMP_DIR)
-                    except: 
-                        pass
-                    st.session_state.db_loaded = False
-                    st.success("✅ سيتم إعادة التحميل...")
-                    time.sleep(1)
-                    st.rerun()
-            
-            if st.button("🚪 خروج المشرف", use_container_width=True):
+            st.write(f"الجلسات: {len(st.session_state.active_sessions)}")
+            st.write(f"حجم القاعدة: {st.session_state.db_size:.2f} MB")
+            if st.button("تصفير الجلسات"):
+                st.session_state.active_sessions = {}
+                st.success("تم")
+            if st.button("إعادة تحميل القاعدة"):
+                try: 
+                    os.remove(DATABASE_FILE)
+                    if os.path.exists(DB_TEMP_DIR): shutil.rmtree(DB_TEMP_DIR)
+                except: pass
+                st.session_state.db_loaded = False
+                st.rerun()
+            if st.button("خروج المشرف"):
                 st.session_state.is_admin = False
                 st.rerun()
-            
             st.markdown('</div>', unsafe_allow_html=True)
             
     if st.session_state.session_id:
