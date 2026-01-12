@@ -4,10 +4,12 @@ import requests
 import time
 import os
 import shutil
+import html  # ✅ مكتبة مهمة لتنظيف النصوص
 from datetime import datetime, timedelta
 import hashlib
 import re
 import io
+import textwrap # ✅ لإصلاح مشكلة المسافات البادئة
 
 # ═══════════════════════════════════════════════════════════════
 # 🎨 إعدادات الصفحة والتصميم
@@ -20,6 +22,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# ✅ إصلاح مشكلة ظهور الأكواد في الأعلى عبر تحسين CSS
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
@@ -28,14 +31,26 @@ st.markdown("""
     footer {visibility: hidden;}
     header {visibility: hidden;}
     .stApp {background-color: #f8f9fa;}
-    .toolbar {
+    
+    /* تنسيق الشريط العلوي */
+    .toolbar-container {
         position: fixed; top: 0; left: 0; right: 0;
         background: white; padding: 0.8rem 2rem;
         display: flex; justify-content: space-between; align-items: center;
         box-shadow: 0 4px 20px rgba(0,0,0,0.05);
         z-index: 1000; direction: rtl; border-bottom: 3px solid #0e7490;
     }
-    .app-title {color: #0e7490; font-weight: 700; font-size: 1.4rem; display: flex; align-items: center; gap: 10px;}
+    
+    .app-title {
+        color: #0e7490; 
+        font-weight: 700; 
+        font-size: 1.4rem; 
+        display: flex; 
+        align-items: center; 
+        gap: 10px;
+    }
+    
+    /* تنسيق البطاقة */
     .book-card {
         background: white; border-radius: 16px; padding: 1.5rem;
         margin-bottom: 1.5rem; border: 1px solid #e5e7eb;
@@ -45,10 +60,22 @@ st.markdown("""
     }
     .book-card:hover {transform: translateY(-2px); box-shadow: 0 10px 25px rgba(14, 116, 144, 0.1); border-color: #0e7490;}
     .book-card::before {content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: #0e7490; border-radius: 0 4px 4px 0;}
+    
     .book-title {font-size: 1.3rem; font-weight: 700; color: #1f2937; margin-bottom: 0.8rem;}
+    
     .book-meta {display: flex; gap: 1rem; align-items: center; color: #6b7280; font-size: 0.9rem; margin-bottom: 1rem; flex-wrap: wrap;}
     .meta-item {background: #f3f4f6; padding: 0.2rem 0.8rem; border-radius: 8px; display: flex; align-items: center; gap: 5px;}
-    .book-desc {color: #4b5563; font-size: 0.95rem; line-height: 1.7; padding-top: 1rem; border-top: 1px dashed #e5e7eb; margin-top: 0.5rem;}
+    
+    .book-desc {
+        color: #4b5563; 
+        font-size: 0.95rem; 
+        line-height: 1.7; 
+        padding-top: 1rem; 
+        border-top: 1px dashed #e5e7eb; 
+        margin-top: 0.5rem;
+        white-space: pre-wrap; /* ✅ مهم جداً للنصوص العربية */
+    }
+    
     .status-active {background: #ecfdf5; color: #047857; padding: 0.5rem 1rem; border-radius: 12px; font-weight: 600; font-size: 0.9rem; border: 1px solid #a7f3d0;}
     .admin-panel {background: #fffbeb; border: 2px solid #fbbf24; padding: 1.5rem; border-radius: 12px; margin: 2rem 0; direction: rtl;}
 </style>
@@ -66,7 +93,6 @@ try:
     USER_API_HASH = st.secrets.get("user_api_hash", "")
     USER_SESSION_STRING = st.secrets.get("user_session_string", "")
     
-    # جلب روابط GitHub المباشرة من الأسرار
     if "db_parts" in st.secrets:
         DB_PARTS = dict(st.secrets["db_parts"])
     else:
@@ -106,13 +132,10 @@ for key in ['active_sessions', 'bot_requests', 'session_id', 'is_admin', 'show_c
 USER_SESSION_AVAILABLE = bool(USER_API_ID and USER_API_HASH and USER_SESSION_STRING)
 
 # ═══════════════════════════════════════════════════════════════
-# 🛠️ دوال التحميل المباشر (GitHub / Direct Links)
+# 🛠️ دوال التحميل المباشر
 # ═══════════════════════════════════════════════════════════════
 
 def download_specific_files(file_map, output_dir):
-    """
-    تحميل مباشر وسريع من روابط GitHub Raw
-    """
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     os.makedirs(output_dir, exist_ok=True)
@@ -127,15 +150,12 @@ def download_specific_files(file_map, output_dir):
         progress_text.info(f"⏳ جاري تحميل الجزء {i+1} من {len(file_map)}...")
         
         try:
-            # تحميل مباشر بدون تعقيدات gdown
             response = requests.get(url, stream=True, timeout=60)
-            
             if response.status_code == 200:
                 with open(output_path, "wb") as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
                 
-                # التحقق من أن الملف SQLite صالح
                 if os.path.exists(output_path):
                     with open(output_path, 'rb') as f:
                         header = f.read(16)
@@ -143,10 +163,9 @@ def download_specific_files(file_map, output_dir):
                             downloaded_files.append(output_path)
                             st.toast(f"✅ تم تحميل {filename}")
                         else:
-                            st.error(f"❌ الملف {filename} تم تحميله لكنه ليس قاعدة بيانات (تأكد أن الرابط هو Raw).")
+                            st.error(f"❌ الملف {filename} تم تحميله لكنه ليس قاعدة بيانات.")
             else:
                 st.error(f"❌ فشل تحميل {filename} (HTTP {response.status_code})")
-                
         except Exception as e:
             st.error(f"❌ خطأ في الاتصال أثناء تحميل {filename}: {e}")
             
@@ -181,17 +200,14 @@ def merge_databases(db_files, output_file):
             try:
                 source_conn = sqlite3.connect(db_file)
                 source_cursor = source_conn.cursor()
-                
                 source_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='books'")
                 if not source_cursor.fetchone():
                     source_conn.close()
                     continue
-                
                 source_cursor.execute("SELECT * FROM books")
                 columns = [description[0] for description in source_cursor.description]
                 placeholders = ','.join(['?' for _ in columns])
                 insert_sql = f"INSERT INTO books ({','.join(columns)}) VALUES ({placeholders})"
-                
                 rows = source_cursor.fetchall()
                 for row in rows:
                     try:
@@ -199,23 +215,18 @@ def merge_databases(db_files, output_file):
                         total_records += 1
                     except sqlite3.IntegrityError:
                         continue 
-                
                 source_conn.close()
                 files_merged += 1
-                
             except Exception:
                 continue
-        
         merged_conn.commit()
         merged_conn.close()
         return files_merged, total_records
-        
     except Exception as e:
         st.error(f"خطأ في دمج القواعد: {e}")
         return 0, 0
 
 def init_db():
-    # التحقق من الكاش
     if os.path.exists(DATABASE_FILE) and os.path.getsize(DATABASE_FILE) > 102400:
         if time.time() - os.path.getmtime(DATABASE_FILE) < DB_CACHE_TIME:
             try:
@@ -234,26 +245,20 @@ def init_db():
 
     with st.spinner("📦 جاري بناء المكتبة من المصدر..."):
         db_files = download_specific_files(DB_PARTS, DB_TEMP_DIR)
-        
         if not db_files:
             st.error("❌ فشل تحميل ملفات قاعدة البيانات.")
             return False
-            
         files_merged, total_records = merge_databases(db_files, DATABASE_FILE)
-        
         if files_merged > 0:
             st.session_state.db_loaded = True
             st.session_state.db_last_update = time.time()
             st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
-            
             try: shutil.rmtree(DB_TEMP_DIR)
             except: pass
-            
             st.success(f"✅ تم تجهيز المكتبة: {total_records} كتاب متاح.")
             time.sleep(1)
             st.rerun()
             return True
-            
     return False
 
 def get_db_connection():
@@ -266,7 +271,7 @@ def get_db_connection():
     except: return None
 
 # ═══════════════════════════════════════════════════════════════
-# 🔍 البحث الذكي (Adaptive Search)
+# 🔍 البحث الذكي
 # ═══════════════════════════════════════════════════════════════
 
 def normalize_arabic_text(text):
@@ -277,29 +282,22 @@ def normalize_arabic_text(text):
 def search_books_advanced(query, filters=None, limit=50):
     if not query or len(query) < 2: return []
     filters = filters or {}
-    
     clean_query = normalize_arabic_text(query)
     words = [w for w in clean_query.split() if len(w) > 1]
     if not words: return []
-    
     conn = get_db_connection()
     if not conn: return []
-    
     try:
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(books)")
         columns_info = cursor.fetchall()
         existing_columns = [col[1] for col in columns_info]
-        
         search_targets = []
         if 'file_name' in existing_columns: search_targets.append('file_name')
         if 'normalized_name' in existing_columns: search_targets.append('normalized_name')
         if 'normalized_desc' in existing_columns: search_targets.append('normalized_desc')
-        if 'description' in existing_columns and 'normalized_desc' not in existing_columns: 
-            search_targets.append('description')
-
+        if 'description' in existing_columns and 'normalized_desc' not in existing_columns: search_targets.append('description')
         if not search_targets: return []
-
         sql_parts, params = [], []
         for word in words:
             word_conditions = []
@@ -308,38 +306,31 @@ def search_books_advanced(query, filters=None, limit=50):
                 params.append(f'%{word}%')
             if word_conditions:
                 sql_parts.append("(" + " OR ".join(word_conditions) + ")")
-            
         where = " AND ".join(sql_parts)
-        
         if filters.get('format') and filters['format'] != 'all':
             if 'file_extension' in existing_columns:
                 where += " AND file_extension = ?"
                 params.append(filters['format'])
-        
         order_clause = "message_id DESC"
         if 'normalized_name' in existing_columns:
             order_clause = "length(normalized_name) ASC, message_id DESC"
         elif 'file_name' in existing_columns:
             order_clause = "length(file_name) ASC, message_id DESC"
-
         sql = f"SELECT * FROM books WHERE {where} ORDER BY {order_clause} LIMIT ?"
         params.append(limit)
-        
         cursor.execute(sql, params)
         results = [dict(r) for r in cursor.fetchall()]
         conn.close()
         return results
-
     except Exception as e:
-        if st.session_state.get('is_admin', False):
-            st.error(f"Error: {e}")
+        if st.session_state.get('is_admin', False): st.error(f"Error: {e}")
         try:
             cursor.execute(f"SELECT * FROM books WHERE file_name LIKE ? LIMIT ?", (f'%{query}%', limit))
             return [dict(r) for r in cursor.fetchall()]
         except: return []
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد (Telethon + Bot API)
+# 📥 منطق التحميل الموحد
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -359,11 +350,9 @@ def check_cooldowns(file_size_mb):
         elapsed = current_time - st.session_state.last_user_session_download
         if elapsed < USER_SESSION_MIN_INTERVAL: return False, USER_SESSION_MIN_INTERVAL - elapsed, "user_session"
         return True, 0, "user_session"
-    
     is_large = file_size_mb >= LARGE_FILE_THRESHOLD_MB
     last_time = st.session_state.last_large_download_time if is_large else st.session_state.last_download_time
     req_interval = LARGE_FILE_MIN_INTERVAL if is_large else MIN_REQUEST_INTERVAL
-    
     elapsed = current_time - last_time
     if elapsed < req_interval: return False, req_interval - elapsed, "bot"
     return True, 0, "bot"
@@ -372,7 +361,6 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext):
     if st.session_state.downloading_now:
         st.warning("⏳ انتظر انتهاء التحميل الحالي...")
         return None
-
     can_download, wait_time, method = check_cooldowns(file_size_mb)
     if not can_download:
         if method == "unavailable":
@@ -383,7 +371,6 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext):
             msg_holder.info(f"🔄 يرجى الانتظار {i} ثواني...")
             time.sleep(1)
         msg_holder.empty()
-
     st.session_state.downloading_now = True
     try:
         file_data = None
@@ -413,7 +400,6 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext):
         else:
             st.warning("⚠️ Bot API لا يدعم message_id - استخدم Telethon للملفات الكبيرة")
             return None
-
         if file_data:
             st.session_state.downloads_count += 1
             if not file_name.endswith(f'.{file_ext}'): file_name = f"{file_name}.{file_ext}"
@@ -428,23 +414,36 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext):
         st.session_state.downloading_now = False
 
 # ═══════════════════════════════════════════════════════════════
-# 🖥️ الواجهة والعرض
+# 🖥️ الواجهة والعرض (تم الإصلاح هنا)
 # ═══════════════════════════════════════════════════════════════
 
 def render_book_card_clean(row):
+    """
+    دالة محسنة لعرض البطاقات بدون تداخل أكواد HTML
+    """
     file_size_mb = row.get('size_mb', 0)
     file_ext = row.get('file_extension', 'pdf').replace('.', '')
     pages = row.get('pages')
     
+    # تحضير أيقونة الصفحات
     pages_html = ""
     if pages and str(pages).isdigit() and int(pages) > 0:
         pages_html = f'<span class="meta-item">📄 {pages} صفحة</span>'
 
+    # تنظيف وتجهيز الوصف
     desc = row.get('description', '')
-    desc = re.sub(r'http\S+', '', desc)
-    desc = re.sub(r'@\w+', '', desc)
-    
-    st.markdown(f"""
+    desc_html = ""
+    if desc:
+        # إزالة الروابط الزائدة لتنظيف النص
+        desc = re.sub(r'http\S+', '', desc)
+        desc = re.sub(r'@\w+', '', desc)
+        # ✅ استخدام html.escape لمنع الأكواد الخبيثة أو التداخل
+        safe_desc = html.escape(desc[:250])
+        desc_html = f'<div class="book-desc">{safe_desc}...</div>'
+
+    # ✅ بناء كود HTML بشكل منفصل وبدون مسافات بادئة تكسر التصميم
+    # استخدام textwrap.dedent يزيل المسافات البادئة الزائدة
+    card_html = textwrap.dedent(f"""
     <div class="book-card">
         <div class="book-title">📖 {row.get('file_name', 'بدون عنوان')}</div>
         <div class="book-meta">
@@ -452,10 +451,14 @@ def render_book_card_clean(row):
             <span class="meta-item">💾 {file_size_mb:.2f} MB</span>
             {pages_html}
         </div>
-        {f'<div class="book-desc">{desc[:250]}...</div>' if desc else ''}
+        {desc_html}
     </div>
-    """, unsafe_allow_html=True)
+    """)
     
+    # عرض البطاقة
+    st.markdown(card_html, unsafe_allow_html=True)
+    
+    # أزرار التحميل
     col1, col2 = st.columns([1, 3])
     with col1:
         if file_size_mb > USER_SESSION_MAX_SIZE_MB:
@@ -468,10 +471,10 @@ def render_book_card_clean(row):
                     st.download_button("💾 حفظ", data, name, mime='application/octet-stream', key=f"dl_{row['id']}", use_container_width=True)
                     st.balloons()
 
-# التحميل الصامت عند بدء التشغيل
+# التحميل الصامت
 if not st.session_state.db_loaded: init_db()
 
-# تنظيف الجلسات القديمة
+# تنظيف الجلسات
 current_time = time.time()
 for sid in list(st.session_state.active_sessions.keys()):
     if current_time - st.session_state.active_sessions[sid]['start_time'] > SESSION_TIMEOUT:
@@ -480,16 +483,18 @@ for sid in list(st.session_state.active_sessions.keys()):
 active_count = len(st.session_state.active_sessions)
 max_allowed = 15
 
-st.markdown(f"""
-<div class="toolbar">
+# ✅ إصلاح الشريط العلوي: استخدام textwrap لضمان عدم تفسيره كـ Code Block
+toolbar_html = textwrap.dedent(f"""
+<div class="toolbar-container">
     <div class="app-title">🏛️ المكتبة الرقمية</div>
     <div style="display: flex; gap: 10px; align-items: center;">
-        {f'<span class="status-active">👑 مشرف</span>' if st.session_state.is_admin else ''}
-        {f'<span style="color:#0e7490; font-weight:bold;">الزوار: {active_count}</span>' if st.session_state.show_counter else ''}
+        {'<span class="status-active">👑 مشرف</span>' if st.session_state.is_admin else ''}
+        {'<span style="color:#0e7490; font-weight:bold;">الزوار: ' + str(active_count) + '</span>' if st.session_state.show_counter else ''}
     </div>
 </div>
 <div style="margin-top: 90px;"></div>
-""", unsafe_allow_html=True)
+""")
+st.markdown(toolbar_html, unsafe_allow_html=True)
 
 if not st.session_state.session_id and not st.session_state.is_admin:
     st.markdown("""
