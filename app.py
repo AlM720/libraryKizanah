@@ -4,10 +4,9 @@ import requests
 import time
 import os
 from datetime import datetime, timedelta
-import tempfile
-from pathlib import Path
 import hashlib
 import re
+import io
 
 # ═══════════════════════════════════════════════════════════════
 # 🎨 إعدادات الصفحة والتصميم
@@ -20,110 +19,37 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# استيراد خط عربي (Cairo) وتنسيق الواجهة
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
-    
     * {font-family: 'Cairo', sans-serif;}
-    
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
-    
     .stApp {background-color: #f8f9fa;}
-    
-    /* Toolbar styling */
     .toolbar {
         position: fixed; top: 0; left: 0; right: 0;
-        background: white;
-        padding: 0.8rem 2rem;
+        background: white; padding: 0.8rem 2rem;
         display: flex; justify-content: space-between; align-items: center;
         box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-        z-index: 1000; direction: rtl;
-        border-bottom: 3px solid #0e7490;
+        z-index: 1000; direction: rtl; border-bottom: 3px solid #0e7490;
     }
-    
-    .app-title {
-        color: #0e7490;
-        font-weight: 700;
-        font-size: 1.4rem;
-        display: flex; align-items: center; gap: 10px;
-    }
-    
-    /* Card Design */
+    .app-title {color: #0e7490; font-weight: 700; font-size: 1.4rem; display: flex; align-items: center; gap: 10px;}
     .book-card {
-        background: white;
-        border-radius: 16px;
-        padding: 1.5rem;
-        margin-bottom: 1.5rem;
-        border: 1px solid #e5e7eb;
+        background: white; border-radius: 16px; padding: 1.5rem;
+        margin-bottom: 1.5rem; border: 1px solid #e5e7eb;
         box-shadow: 0 2px 5px rgba(0,0,0,0.02);
         transition: transform 0.2s, box-shadow 0.2s;
-        direction: rtl;
-        position: relative;
-        overflow: hidden;
+        direction: rtl; position: relative; overflow: hidden;
     }
-    
-    .book-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 10px 25px rgba(14, 116, 144, 0.1);
-        border-color: #0e7490;
-    }
-    
-    .book-card::before {
-        content: '';
-        position: absolute;
-        right: 0; top: 0; bottom: 0;
-        width: 6px;
-        background: #0e7490;
-        border-radius: 0 4px 4px 0;
-    }
-    
-    .book-title {
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: #1f2937;
-        margin-bottom: 0.8rem;
-    }
-    
-    .book-meta {
-        display: flex; gap: 1rem; align-items: center;
-        color: #6b7280; font-size: 0.9rem;
-        margin-bottom: 1rem;
-        flex-wrap: wrap;
-    }
-    
-    .meta-item {
-        background: #f3f4f6;
-        padding: 0.2rem 0.8rem;
-        border-radius: 8px;
-        display: flex; align-items: center; gap: 5px;
-    }
-    
-    .book-desc {
-        color: #4b5563;
-        font-size: 0.95rem;
-        line-height: 1.7;
-        padding-top: 1rem;
-        border-top: 1px dashed #e5e7eb;
-        margin-top: 0.5rem;
-    }
-
-    /* Status Messages */
-    .status-active {
-        background: #ecfdf5; color: #047857;
-        padding: 0.5rem 1rem; border-radius: 12px;
-        font-weight: 600; font-size: 0.9rem;
-        border: 1px solid #a7f3d0;
-    }
-    
-    /* Admin Panel */
-    .admin-panel {
-        background: #fffbeb; border: 2px solid #fbbf24;
-        padding: 1.5rem; border-radius: 12px; margin: 2rem 0;
-        direction: rtl;
-    }
+    .book-card:hover {transform: translateY(-2px); box-shadow: 0 10px 25px rgba(14, 116, 144, 0.1); border-color: #0e7490;}
+    .book-card::before {content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: #0e7490; border-radius: 0 4px 4px 0;}
+    .book-title {font-size: 1.3rem; font-weight: 700; color: #1f2937; margin-bottom: 0.8rem;}
+    .book-meta {display: flex; gap: 1rem; align-items: center; color: #6b7280; font-size: 0.9rem; margin-bottom: 1rem; flex-wrap: wrap;}
+    .meta-item {background: #f3f4f6; padding: 0.2rem 0.8rem; border-radius: 8px; display: flex; align-items: center; gap: 5px;}
+    .book-desc {color: #4b5563; font-size: 0.95rem; line-height: 1.7; padding-top: 1rem; border-top: 1px dashed #e5e7eb; margin-top: 0.5rem;}
+    .status-active {background: #ecfdf5; color: #047857; padding: 0.5rem 1rem; border-radius: 12px; font-weight: 600; font-size: 0.9rem; border: 1px solid #a7f3d0;}
+    .admin-panel {background: #fffbeb; border: 2px solid #fbbf24; padding: 1.5rem; border-radius: 12px; margin: 2rem 0; direction: rtl;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -144,7 +70,7 @@ except:
     st.stop()
 
 DATABASE_FILE = "/tmp/books.db"
-DB_CACHE_TIME = 300
+DB_CACHE_TIME = 3600 # ساعة واحدة
 SESSION_TIMEOUT = 600
 MIN_REQUEST_INTERVAL = 3
 MAX_REQUESTS_PER_MINUTE = 15
@@ -154,26 +80,24 @@ USER_SESSION_MIN_INTERVAL = 10
 USER_SESSION_MAX_SIZE_MB = 2000
 
 # ═══════════════════════════════════════════════════════════════
-# 📦 إدارة الحالة (State Management)
+# 📦 إدارة الحالة
 # ═══════════════════════════════════════════════════════════════
 
 for key in ['active_sessions', 'bot_requests', 'session_id', 'is_admin', 'show_counter', 
-            'search_results', 'session_start_time', 'downloads_count', 'search_cache', 
-            'search_history', 'db_loaded', 'db_last_update', 'db_size', 
-            'last_download_time', 'last_large_download_time', 'downloading_now', 
-            'last_user_session_download', 'user_session_downloads_count']:
+            'db_loaded', 'db_last_update', 'db_size', 'downloading_now', 
+            'last_download_time', 'last_large_download_time', 
+            'last_user_session_download', 'user_session_downloads_count', 'downloads_count']:
     if key not in st.session_state:
         if key == 'bot_requests': st.session_state[key] = {i: [] for i in range(len(BOT_TOKENS))}
-        elif key in ['active_sessions', 'search_cache', 'search_history']: st.session_state[key] = {}
+        elif key == 'active_sessions': st.session_state[key] = {}
         elif key in ['show_counter', 'is_admin', 'db_loaded', 'downloading_now']: st.session_state[key] = False
-        elif key in ['downloads_count', 'db_last_update', 'db_size', 'user_session_downloads_count']: st.session_state[key] = 0
-        elif key in ['last_download_time', 'last_large_download_time', 'last_user_session_download']: st.session_state[key] = 0.0
-        else: st.session_state[key] = None
+        elif key in ['db_last_update', 'db_size', 'user_session_downloads_count', 'downloads_count']: st.session_state[key] = 0
+        else: st.session_state[key] = 0.0
 
 USER_SESSION_AVAILABLE = bool(USER_API_ID and USER_API_HASH and USER_SESSION_STRING)
 
 # ═══════════════════════════════════════════════════════════════
-# 🛠️ الدوال المساعدة (Backend Logic)
+# 🛠️ الدوال المساعدة والتحميل الذكي للقاعدة
 # ═══════════════════════════════════════════════════════════════
 
 def extract_file_id(url_or_id):
@@ -185,35 +109,76 @@ def extract_file_id(url_or_id):
         if match: return match.group(1)
     return url_or_id
 
-def download_db_from_gdrive():
+def download_file_from_google_drive(id, destination):
+    """دالة قوية جداً لتجاوز صفحة تحذير الفيروسات من جوجل"""
+    URL = "https://docs.google.com/uc?export=download"
+    session = requests.Session()
+    response = session.get(URL, params={'id': id}, stream=True)
+    
+    def get_confirm_token(response):
+        for key, value in response.cookies.items():
+            if key.startswith('download_warning'):
+                return value
+        return None
+
+    token = get_confirm_token(response)
+    if token:
+        params = {'id': id, 'confirm': token}
+        response = session.get(URL, params=params, stream=True)
+
+    CHUNK_SIZE = 32768
+    with open(destination, "wb") as f:
+        for chunk in response.iter_content(CHUNK_SIZE):
+            if chunk: f.write(chunk)
+
+def init_db():
+    """تحميل وفحص سلامة قاعدة البيانات"""
     if not GDRIVE_FILE_ID: return False
+    
+    # هل الملف موجود وحديث؟
     if os.path.exists(DATABASE_FILE):
-        if time.time() - os.path.getmtime(DATABASE_FILE) < DB_CACHE_TIME: return True
+        if time.time() - os.path.getmtime(DATABASE_FILE) < DB_CACHE_TIME:
+            # فحص سريع: هل هو ملف SQLite صالح؟
+            try:
+                conn = sqlite3.connect(DATABASE_FILE)
+                conn.execute("SELECT count(*) FROM books LIMIT 1")
+                conn.close()
+                st.session_state.db_loaded = True
+                return True
+            except:
+                # الملف تالف، نحذفه ونعيد التحميل
+                os.remove(DATABASE_FILE)
+    
+    # بدء التحميل
     try:
         file_id = extract_file_id(GDRIVE_FILE_ID)
-        download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
-        response = requests.get(download_url, stream=True, timeout=30)
-        if response.status_code == 200:
-            with open(DATABASE_FILE, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk: f.write(chunk)
-            st.session_state.db_loaded = True
-            st.session_state.db_last_update = time.time()
-            st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
-            return True
-    except: return False
-    return False
+        download_file_from_google_drive(file_id, DATABASE_FILE)
+        
+        # التأكد من نجاح التحميل
+        if os.path.getsize(DATABASE_FILE) < 1000: # أصغر من 1 كيلوبايت = خطأ
+            st.error("❌ فشل تحميل قاعدة البيانات (الملف صغير جداً). تأكد من صلاحيات الرابط في جوجل درايف.")
+            return False
+            
+        st.session_state.db_loaded = True
+        st.session_state.db_last_update = time.time()
+        st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
+        return True
+    except Exception as e:
+        st.error(f"حدث خطأ أثناء تحميل القاعدة: {e}")
+        return False
 
 def get_db_connection():
-    if not st.session_state.db_loaded or not os.path.exists(DATABASE_FILE):
-        if not download_db_from_gdrive(): return None
+    if not st.session_state.db_loaded:
+        if not init_db(): return None
     try:
         conn = sqlite3.connect(DATABASE_FILE, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         return conn
     except: return None
 
-# --- الدوال المحدثة (البحث الذكي) ---
+# ═══════════════════════════════════════════════════════════════
+# 🔍 البحث الذكي (Adaptive Search)
+# ═══════════════════════════════════════════════════════════════
 
 def normalize_arabic_text(text):
     if not text: return ""
@@ -226,7 +191,6 @@ def search_books_advanced(query, filters=None, limit=50):
     
     clean_query = normalize_arabic_text(query)
     words = [w for w in clean_query.split() if len(w) > 1]
-    
     if not words: return []
     
     conn = get_db_connection()
@@ -234,8 +198,7 @@ def search_books_advanced(query, filters=None, limit=50):
     
     try:
         cursor = conn.cursor()
-        
-        # 🕵️‍♂️ فحص ذكي للأعمدة الموجودة
+        # فحص الأعمدة الموجودة فعلياً
         cursor.execute("PRAGMA table_info(books)")
         columns_info = cursor.fetchall()
         existing_columns = [col[1] for col in columns_info]
@@ -250,13 +213,11 @@ def search_books_advanced(query, filters=None, limit=50):
         if not search_targets: return []
 
         sql_parts, params = [], []
-        
         for word in words:
             word_conditions = []
             for col in search_targets:
                 word_conditions.append(f"{col} LIKE ?")
                 params.append(f'%{word}%')
-            
             if word_conditions:
                 sql_parts.append("(" + " OR ".join(word_conditions) + ")")
             
@@ -282,15 +243,14 @@ def search_books_advanced(query, filters=None, limit=50):
         return results
 
     except Exception as e:
-        if st.session_state.get('is_admin', False):
-            st.error(f"Error: {e}")
+        # Fallback
         try:
             cursor.execute(f"SELECT * FROM books WHERE file_name LIKE ? LIMIT ?", (f'%{query}%', limit))
             return [dict(r) for r in cursor.fetchall()]
         except: return []
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل (Hidden from User)
+# 📥 منطق التحميل
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -305,14 +265,12 @@ def get_best_bot():
 
 def check_cooldowns(file_size_mb):
     current_time = time.time()
-    # Logic for User Session (Large Files)
     if file_size_mb >= 20: 
         if not USER_SESSION_AVAILABLE: return False, 0, "unavailable"
         elapsed = current_time - st.session_state.last_user_session_download
         if elapsed < USER_SESSION_MIN_INTERVAL: return False, USER_SESSION_MIN_INTERVAL - elapsed, "user_session"
         return True, 0, "user_session"
     
-    # Logic for Bots (Standard Files)
     is_large = file_size_mb >= LARGE_FILE_THRESHOLD_MB
     last_time = st.session_state.last_large_download_time if is_large else st.session_state.last_download_time
     req_interval = LARGE_FILE_MIN_INTERVAL if is_large else MIN_REQUEST_INTERVAL
@@ -322,43 +280,31 @@ def check_cooldowns(file_size_mb):
     return True, 0, "bot"
 
 def unified_downloader(file_id, file_name, file_size_mb, file_ext):
-    """دالة تحميل مركزية ذكية تخفي التفاصيل عن المستخدم"""
-    
     if st.session_state.downloading_now:
-        st.warning("⏳ يرجى الانتظار، هناك ملف قيد التحميل حالياً.")
+        st.warning("⏳ انتظر انتهاء التحميل الحالي...")
         return None
 
-    # التحقق من الإتاحة
     can_download, wait_time, method = check_cooldowns(file_size_mb)
-    
     if not can_download:
         if method == "unavailable":
-            st.error("عذراً، هذا الملف غير متاح للتحميل المباشر حالياً.")
+            st.error("الملف غير متاح حالياً.")
             return None
-        
-        # رسالة انتظار لطيفة
         msg_holder = st.empty()
         for i in range(int(wait_time), 0, -1):
-            msg_holder.info(f"🔄 جاري تجهيز الملف... (يرجى الانتظار {i} ثواني)")
+            msg_holder.info(f"🔄 يرجى الانتظار {i} ثواني...")
             time.sleep(1)
         msg_holder.empty()
 
     st.session_state.downloading_now = True
-    
     try:
         file_data = None
-        
-        # Scenario 1: ملف ضخم (Use Telethon/User Session)
         if method == "user_session" or (method == "bot" and file_size_mb > 20):
             if not USER_SESSION_AVAILABLE:
-                st.error("عذراً، الملف كبير جداً ولا يمكن تحميله حالياً.")
+                st.error("خاصية التحميل الكبير غير مفعلة.")
                 return None
-                
             from telethon.sync import TelegramClient
             from telethon.sessions import StringSession
-            import io
-            
-            with st.spinner("📥 جاري جلب الملف من السحابة..."):
+            with st.spinner("📥 جلب الملف من السحابة..."):
                 try:
                     client = TelegramClient(StringSession(USER_SESSION_STRING), USER_API_ID, USER_API_HASH)
                     with client:
@@ -366,14 +312,10 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
                         client.download_file(file_id, file=file_buffer)
                         file_buffer.seek(0)
                         file_data = file_buffer.read()
-                        
                     st.session_state.last_user_session_download = time.time()
                     st.session_state.user_session_downloads_count += 1
                 except Exception as e:
-                    st.error("تعذر جلب الملف. يرجى المحاولة لاحقاً.")
-                    if st.session_state.is_admin: st.error(str(e))
-        
-        # Scenario 2: ملف عادي (Use Bot API)
+                    st.error("فشل الجلب من السحابة.")
         else:
             bot_token = get_best_bot()
             with st.spinner("📥 جاري التحميل..."):
@@ -394,27 +336,23 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
             if not file_name.endswith(f'.{file_ext}'): file_name = f"{file_name}.{file_ext}"
             return file_data, file_name
         else:
-            st.error("حدث خطأ أثناء الاتصال بالخادم.")
+            st.error("خطأ في الاتصال.")
             return None, None
-            
-    except Exception as e:
+    except:
         st.error("حدث خطأ غير متوقع.")
         return None, None
     finally:
         st.session_state.downloading_now = False
 
 # ═══════════════════════════════════════════════════════════════
-# 🃏 عرض البطاقات (UI)
+# 🖥️ الواجهة والعرض
 # ═══════════════════════════════════════════════════════════════
 
 def render_book_card_clean(row):
-    """عرض الكتاب بشكل نظيف تماماً"""
     file_size_mb = row.get('size_mb', 0)
     file_ext = row.get('file_extension', 'pdf').replace('.', '')
     pages = row.get('pages', '?')
     desc = row.get('description', '')
-    
-    # تنظيف الوصف من الروابط
     desc = re.sub(r'http\S+', '', desc)
     desc = re.sub(r'@\w+', '', desc)
     
@@ -430,34 +368,21 @@ def render_book_card_clean(row):
     </div>
     """, unsafe_allow_html=True)
     
-    # زر التحميل الموحد (الذكي)
     col1, col2 = st.columns([1, 3])
     with col1:
         if file_size_mb > USER_SESSION_MAX_SIZE_MB:
-            st.warning("⚠️ الملف كبير جداً للتحميل")
+            st.warning("⚠️ كبير جداً")
         else:
-            if st.button("⬇️ تحميل الكتاب", key=f"btn_{row['id']}", use_container_width=True, type="primary"):
+            if st.button("⬇️ تحميل", key=f"btn_{row['id']}", use_container_width=True, type="primary"):
                 data, name = unified_downloader(row['file_id'], row['file_name'], file_size_mb, file_ext)
                 if data:
-                    st.download_button(
-                        label="💾 حفظ الملف في جهازك",
-                        data=data,
-                        file_name=name,
-                        mime='application/octet-stream',
-                        key=f"dl_{row['id']}",
-                        use_container_width=True
-                    )
+                    st.download_button("💾 حفظ", data, name, mime='application/octet-stream', key=f"dl_{row['id']}", use_container_width=True)
                     st.balloons()
 
-# ═══════════════════════════════════════════════════════════════
-# 🖥️ واجهة التطبيق الرئيسية
-# ═══════════════════════════════════════════════════════════════
+# التحميل الصامت
+if not st.session_state.db_loaded: init_db()
 
-# تحميل القاعدة بصمت
-if not st.session_state.db_loaded:
-    download_db_from_gdrive()
-
-# إدارة الجلسات بصمت
+# تنظيف الجلسات
 current_time = time.time()
 for sid in list(st.session_state.active_sessions.keys()):
     if current_time - st.session_state.active_sessions[sid]['start_time'] > SESSION_TIMEOUT:
@@ -466,96 +391,76 @@ for sid in list(st.session_state.active_sessions.keys()):
 active_count = len(st.session_state.active_sessions)
 max_allowed = 15
 
-# --- منطقة الشريط العلوي ---
 st.markdown(f"""
 <div class="toolbar">
     <div class="app-title">🏛️ المكتبة الرقمية</div>
     <div style="display: flex; gap: 10px; align-items: center;">
-        {f'<span class="status-active">👑 مشرف النظام</span>' if st.session_state.is_admin else ''}
-        {f'<span style="color:#0e7490; font-weight:bold; font-size:0.9rem;">الزوار: {active_count}</span>' if st.session_state.show_counter else ''}
+        {f'<span class="status-active">👑 مشرف</span>' if st.session_state.is_admin else ''}
+        {f'<span style="color:#0e7490; font-weight:bold;">الزوار: {active_count}</span>' if st.session_state.show_counter else ''}
     </div>
 </div>
 <div style="margin-top: 90px;"></div>
 """, unsafe_allow_html=True)
-# ----------------------------------------------
 
-# صفحة الدخول (غرفة الانتظار)
 if not st.session_state.session_id and not st.session_state.is_admin:
-    can_enter = active_count < max_allowed
-    
     st.markdown("""
     <div style="text-align: center; margin-top: 3rem;">
         <h1 style="color: #1e293b; font-size: 2.5rem; margin-bottom: 1rem;">مرحباً بك في المكتبة الرقمية</h1>
-        <p style="color: #64748b; font-size: 1.1rem; max-width: 600px; margin: 0 auto;">
-            مكتبة شاملة تضم آلاف الكتب والمراجع. ابحث، تصفح، وحمل الكتب بسهولة وسرعة فائقة.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    </div>""", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown("<div style='height: 30px;'></div>", unsafe_allow_html=True)
-        if can_enter:
+        if active_count < max_allowed:
             if st.button("🚀 الدخول للمكتبة", use_container_width=True, type="primary"):
                 sid = hashlib.md5(f"{time.time()}".encode()).hexdigest()[:10]
                 st.session_state.active_sessions[sid] = {'start_time': time.time()}
                 st.session_state.session_id = sid
-                st.session_state.session_start_time = time.time()
                 st.rerun()
         else:
-            st.warning("⚠️ المكتبة مزدحمة حالياً، يرجى الانتظار قليلاً...")
+            st.warning("⚠️ المكتبة ممتلئة...")
             time.sleep(5)
             st.rerun()
             
-    with st.expander("🔒 دخول الإدارة"):
+    with st.expander("🔒 الإدارة"):
         if st.text_input("كلمة المرور", type="password") == ADMIN_PASSWORD:
             st.session_state.is_admin = True
             st.rerun()
 
-# واجهة المكتبة (بعد الدخول)
 else:
-    if st.session_state.session_id:
-        elapsed = int(current_time - st.session_state.session_start_time)
-        remaining = max(0, SESSION_TIMEOUT - elapsed)
-        if remaining == 0:
-            st.session_state.session_id = None
-            st.rerun()
-        st.progress(remaining / SESSION_TIMEOUT)
-    
     col_search, col_btn = st.columns([4, 1])
     with col_search:
-        query = st.text_input("", placeholder="🔍 ابحث عن كتاب، مؤلف، أو موضوع...", label_visibility="collapsed")
+        query = st.text_input("", placeholder="🔍 بحث...", label_visibility="collapsed")
     with col_btn:
         do_search = st.button("بحث", use_container_width=True, type="primary")
 
     if query or do_search:
-        with st.spinner("جاري البحث في الأرفف..."):
+        with st.spinner("جاري البحث..."):
             results = search_books_advanced(query, limit=30)
-        
         if results:
-            st.success(f"تم العثور على {len(results)} كتاب")
-            for row in results:
-                render_book_card_clean(row)
+            st.success(f"النتائج: {len(results)}")
+            for row in results: render_book_card_clean(row)
         else:
-            st.info("لم يتم العثور على نتائج مطابقة.")
+            st.info("لم يتم العثور على نتائج.")
+            if st.session_state.is_admin:
+                # تشخيص للمشرف فقط
+                db_size = st.session_state.db_size
+                st.warning(f"تشخيص المشرف: حجم القاعدة {db_size:.2f} MB. إذا كان الرقم صغيراً جداً، فالرابط خطأ.")
 
     if st.session_state.is_admin:
-        with st.expander("🛠️ لوحة تحكم النظام", expanded=False):
+        with st.expander("🛠️ التحكم", expanded=False):
             st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
-            st.write(f"عدد الجلسات النشطة: {len(st.session_state.active_sessions)}")
-            st.write(f"عدد التحميلات (User Session): {st.session_state.user_session_downloads_count}")
-            
-            if st.button("إنهاء جميع الجلسات"):
+            st.write(f"الجلسات: {len(st.session_state.active_sessions)}")
+            if st.button("تصفير الجلسات"):
                 st.session_state.active_sessions = {}
-                st.success("تم تصفير الجلسات")
-            
+                st.success("تم")
             if st.button("خروج المشرف"):
                 st.session_state.is_admin = False
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
             
     if st.session_state.session_id:
-        if st.button("خروج من المكتبة"):
+        if st.button("خروج"):
             del st.session_state.active_sessions[st.session_state.session_id]
             st.session_state.session_id = None
             st.rerun()
