@@ -235,7 +235,7 @@ def get_db_connection():
     except: return None
 
 # ═══════════════════════════════════════════════════════════════
-# 🔍 البحث الذكي (تم التعديل: حساب العدد الكلي)
+# 🔍 البحث الذكي (تم التعديل: ترتيب دقيق جداً)
 # ═══════════════════════════════════════════════════════════════
 
 def normalize_arabic_text(text):
@@ -278,21 +278,29 @@ def search_books_advanced(query, filters=None, limit=50):
                 where += " AND file_extension = ?"
                 params.append(filters['format'])
         
-        # --- تعديل: حساب العدد الكلي أولاً ---
+        # 1. حساب العدد الكلي (بدون ترتيب)
         count_sql = f"SELECT COUNT(*) FROM books WHERE {where}"
-        # نستخدم نسخة من params لأن الاستعلام الثاني سيضيف عليها
         count_params = list(params) 
         cursor.execute(count_sql, count_params)
         total_count = cursor.fetchone()[0]
 
-        # --- ترتيب النتائج ---
+        # 2. بناء الترتيب الذكي
         target_name_col = 'normalized_name' if 'normalized_name' in existing_columns else 'file_name'
+        
+        # منطق الترتيب الجديد:
+        # 0: تطابق تام
+        # 1: الكلمة موجودة ككلمة كاملة (في البداية، النهاية، أو الوسط) - "قف الشاي"
+        # 2: تبدأ بالأحرف (جزء من كلمة) - "الشايع"
+        # 3: غير ذلك
         
         order_clause = f"""
         CASE 
             WHEN {target_name_col} = ? THEN 0 
             WHEN {target_name_col} LIKE ? THEN 1 
-            ELSE 2 
+            WHEN {target_name_col} LIKE ? THEN 1
+            WHEN {target_name_col} LIKE ? THEN 1
+            WHEN {target_name_col} LIKE ? THEN 2
+            ELSE 3 
         END, 
         """
         
@@ -303,9 +311,12 @@ def search_books_advanced(query, filters=None, limit=50):
         else:
              order_clause += "message_id DESC"
 
-        # إضافة متغيرات الترتيب للقائمة
-        params.append(clean_query)         # للتطابق التام
-        params.append(f'{clean_query}%')   # لمن يبدأ بالكلمة
+        # إضافة متغيرات الترتيب بالترتيب الدقيق
+        params.append(clean_query)             # = (تطابق تام)
+        params.append(f"{clean_query} %")      # يبدأ بالكلمة + مسافة
+        params.append(f"% {clean_query}")      # مسافة + ينتهي بالكلمة
+        params.append(f"% {clean_query} %")    # مسافة + الكلمة + مسافة
+        params.append(f"{clean_query}%")       # يبدأ بالأحرف (للشايع)
         
         sql = f"SELECT * FROM books WHERE {where} ORDER BY {order_clause} LIMIT ?"
         params.append(limit)
@@ -319,7 +330,7 @@ def search_books_advanced(query, filters=None, limit=50):
         try:
             cursor.execute(f"SELECT * FROM books WHERE file_name LIKE ? LIMIT ?", (f'%{query}%', limit))
             res = [dict(r) for r in cursor.fetchall()]
-            return res, len(res) # Fallback return
+            return res, len(res) 
         except: return [], 0
 
 # ═══════════════════════════════════════════════════════════════
@@ -647,7 +658,6 @@ else:
             results, total_count = search_books_advanced(query, limit=st.session_state.search_limit)
         
         if results:
-            # --- تعديل: عرض العدد الحالي من العدد الكلي ---
             st.success(f"النتائج: عرض {len(results)} من أصل {total_count} نتيجة")
             for row in results: render_book_card_clean(row)
             
