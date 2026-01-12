@@ -4,12 +4,11 @@ import requests
 import time
 import os
 import shutil
-import html  # ✅ مكتبة مهمة لتنظيف النصوص
+import html
 from datetime import datetime, timedelta
 import hashlib
 import re
 import io
-import textwrap # ✅ لإصلاح مشكلة المسافات البادئة
 
 # ═══════════════════════════════════════════════════════════════
 # 🎨 إعدادات الصفحة والتصميم
@@ -22,62 +21,24 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ✅ إصلاح مشكلة ظهور الأكواد في الأعلى عبر تحسين CSS
+# تحسين CSS (تم وضعه في سطر واحد لتجنب المشاكل)
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
-    * {font-family: 'Cairo', sans-serif;}
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stApp {background-color: #f8f9fa;}
-    
-    /* تنسيق الشريط العلوي */
-    .toolbar-container {
-        position: fixed; top: 0; left: 0; right: 0;
-        background: white; padding: 0.8rem 2rem;
-        display: flex; justify-content: space-between; align-items: center;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
-        z-index: 1000; direction: rtl; border-bottom: 3px solid #0e7490;
-    }
-    
-    .app-title {
-        color: #0e7490; 
-        font-weight: 700; 
-        font-size: 1.4rem; 
-        display: flex; 
-        align-items: center; 
-        gap: 10px;
-    }
-    
-    /* تنسيق البطاقة */
-    .book-card {
-        background: white; border-radius: 16px; padding: 1.5rem;
-        margin-bottom: 1.5rem; border: 1px solid #e5e7eb;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.02);
-        transition: transform 0.2s, box-shadow 0.2s;
-        direction: rtl; position: relative; overflow: hidden;
-    }
-    .book-card:hover {transform: translateY(-2px); box-shadow: 0 10px 25px rgba(14, 116, 144, 0.1); border-color: #0e7490;}
-    .book-card::before {content: ''; position: absolute; right: 0; top: 0; bottom: 0; width: 6px; background: #0e7490; border-radius: 0 4px 4px 0;}
-    
-    .book-title {font-size: 1.3rem; font-weight: 700; color: #1f2937; margin-bottom: 0.8rem;}
-    
-    .book-meta {display: flex; gap: 1rem; align-items: center; color: #6b7280; font-size: 0.9rem; margin-bottom: 1rem; flex-wrap: wrap;}
-    .meta-item {background: #f3f4f6; padding: 0.2rem 0.8rem; border-radius: 8px; display: flex; align-items: center; gap: 5px;}
-    
-    .book-desc {
-        color: #4b5563; 
-        font-size: 0.95rem; 
-        line-height: 1.7; 
-        padding-top: 1rem; 
-        border-top: 1px dashed #e5e7eb; 
-        margin-top: 0.5rem;
-        white-space: pre-wrap; /* ✅ مهم جداً للنصوص العربية */
-    }
-    
-    .status-active {background: #ecfdf5; color: #047857; padding: 0.5rem 1rem; border-radius: 12px; font-weight: 600; font-size: 0.9rem; border: 1px solid #a7f3d0;}
-    .admin-panel {background: #fffbeb; border: 2px solid #fbbf24; padding: 1.5rem; border-radius: 12px; margin: 2rem 0; direction: rtl;}
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
+*{font-family:'Cairo',sans-serif;}
+#MainMenu{visibility:hidden;}footer{visibility:hidden;}header{visibility:hidden;}
+.stApp{background-color:#f8f9fa;}
+.toolbar-container{position:fixed;top:0;left:0;right:0;background:white;padding:0.8rem 2rem;display:flex;justify-content:space-between;align-items:center;box-shadow:0 4px 20px rgba(0,0,0,0.05);z-index:99999;direction:rtl;border-bottom:3px solid #0e7490;}
+.app-title{color:#0e7490;font-weight:700;font-size:1.4rem;display:flex;align-items:center;gap:10px;}
+.book-card{background:white;border-radius:16px;padding:1.5rem;margin-bottom:1.5rem;border:1px solid #e5e7eb;box-shadow:0 2px 5px rgba(0,0,0,0.02);transition:transform 0.2s,box-shadow 0.2s;direction:rtl;position:relative;overflow:hidden;}
+.book-card:hover{transform:translateY(-2px);box-shadow:0 10px 25px rgba(14,116,144,0.1);border-color:#0e7490;}
+.book-card::before{content:'';position:absolute;right:0;top:0;bottom:0;width:6px;background:#0e7490;border-radius:0 4px 4px 0;}
+.book-title{font-size:1.3rem;font-weight:700;color:#1f2937;margin-bottom:0.8rem;}
+.book-meta{display:flex;gap:1rem;align-items:center;color:#6b7280;font-size:0.9rem;margin-bottom:1rem;flex-wrap:wrap;}
+.meta-item{background:#f3f4f6;padding:0.2rem 0.8rem;border-radius:8px;display:flex;align-items:center;gap:5px;}
+.book-desc{color:#4b5563;font-size:0.95rem;line-height:1.7;padding-top:1rem;border-top:1px dashed #e5e7eb;margin-top:0.5rem;white-space:pre-wrap;}
+.status-active{background:#ecfdf5;color:#047857;padding:0.5rem 1rem;border-radius:12px;font-weight:600;font-size:0.9rem;border:1px solid #a7f3d0;}
+.admin-panel{background:#fffbeb;border:2px solid #fbbf24;padding:1.5rem;border-radius:12px;margin:2rem 0;direction:rtl;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -414,51 +375,36 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext):
         st.session_state.downloading_now = False
 
 # ═══════════════════════════════════════════════════════════════
-# 🖥️ الواجهة والعرض (تم الإصلاح هنا)
+# 🖥️ الواجهة والعرض (تم الإصلاح الجذري هنا)
 # ═══════════════════════════════════════════════════════════════
 
 def render_book_card_clean(row):
     """
-    دالة محسنة لعرض البطاقات بدون تداخل أكواد HTML
+    نسخة مضغوطة (Minified) لمنع أي تفسير خاطئ للأكواد
     """
     file_size_mb = row.get('size_mb', 0)
     file_ext = row.get('file_extension', 'pdf').replace('.', '')
     pages = row.get('pages')
     
-    # تحضير أيقونة الصفحات
     pages_html = ""
     if pages and str(pages).isdigit() and int(pages) > 0:
         pages_html = f'<span class="meta-item">📄 {pages} صفحة</span>'
 
-    # تنظيف وتجهيز الوصف
     desc = row.get('description', '')
     desc_html = ""
     if desc:
-        # إزالة الروابط الزائدة لتنظيف النص
         desc = re.sub(r'http\S+', '', desc)
         desc = re.sub(r'@\w+', '', desc)
-        # ✅ استخدام html.escape لمنع الأكواد الخبيثة أو التداخل
+        # استخدام html.escape لضمان عدم وجود أكواد تكسر الصفحة
         safe_desc = html.escape(desc[:250])
         desc_html = f'<div class="book-desc">{safe_desc}...</div>'
 
-    # ✅ بناء كود HTML بشكل منفصل وبدون مسافات بادئة تكسر التصميم
-    # استخدام textwrap.dedent يزيل المسافات البادئة الزائدة
-    card_html = textwrap.dedent(f"""
-    <div class="book-card">
-        <div class="book-title">📖 {row.get('file_name', 'بدون عنوان')}</div>
-        <div class="book-meta">
-            <span class="meta-item" style="color: #0e7490; background: #cffafe;">📂 {file_ext.upper()}</span>
-            <span class="meta-item">💾 {file_size_mb:.2f} MB</span>
-            {pages_html}
-        </div>
-        {desc_html}
-    </div>
-    """)
+    # ✅ التغيير الجذري: دمج كل HTML في سطر واحد فقط بدون أي مسافات بادئة أو جديدة
+    # هذا يمنع Streamlit من اعتباره كوداً برمجياً
+    card_html = f"""<div class="book-card"><div class="book-title">📖 {row.get('file_name', 'بدون عنوان')}</div><div class="book-meta"><span class="meta-item" style="color: #0e7490; background: #cffafe;">📂 {file_ext.upper()}</span><span class="meta-item">💾 {file_size_mb:.2f} MB</span>{pages_html}</div>{desc_html}</div>"""
     
-    # عرض البطاقة
     st.markdown(card_html, unsafe_allow_html=True)
     
-    # أزرار التحميل
     col1, col2 = st.columns([1, 3])
     with col1:
         if file_size_mb > USER_SESSION_MAX_SIZE_MB:
@@ -483,24 +429,15 @@ for sid in list(st.session_state.active_sessions.keys()):
 active_count = len(st.session_state.active_sessions)
 max_allowed = 15
 
-# ✅ إصلاح الشريط العلوي: استخدام textwrap لضمان عدم تفسيره كـ Code Block
-toolbar_html = textwrap.dedent(f"""
-<div class="toolbar-container">
-    <div class="app-title">🏛️ المكتبة الرقمية</div>
-    <div style="display: flex; gap: 10px; align-items: center;">
-        {'<span class="status-active">👑 مشرف</span>' if st.session_state.is_admin else ''}
-        {'<span style="color:#0e7490; font-weight:bold;">الزوار: ' + str(active_count) + '</span>' if st.session_state.show_counter else ''}
-    </div>
-</div>
-<div style="margin-top: 90px;"></div>
-""")
+# ✅ إصلاح الشريط العلوي بدمجه في سطر واحد
+admin_badge = '<span class="status-active">👑 مشرف</span>' if st.session_state.is_admin else ''
+visitor_badge = f'<span style="color:#0e7490; font-weight:bold;">الزوار: {active_count}</span>' if st.session_state.show_counter else ''
+toolbar_html = f"""<div class="toolbar-container"><div class="app-title">🏛️ المكتبة الرقمية</div><div style="display: flex; gap: 10px; align-items: center;">{admin_badge}{visitor_badge}</div></div><div style="margin-top: 90px;"></div>"""
+
 st.markdown(toolbar_html, unsafe_allow_html=True)
 
 if not st.session_state.session_id and not st.session_state.is_admin:
-    st.markdown("""
-    <div style="text-align: center; margin-top: 3rem;">
-        <h1 style="color: #1e293b; font-size: 2.5rem; margin-bottom: 1rem;">مرحباً بك في المكتبة الرقمية</h1>
-    </div>""", unsafe_allow_html=True)
+    st.markdown("""<div style="text-align: center; margin-top: 3rem;"><h1 style="color: #1e293b; font-size: 2.5rem; margin-bottom: 1rem;">مرحباً بك في المكتبة الرقمية</h1></div>""", unsafe_allow_html=True)
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
