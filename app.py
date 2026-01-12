@@ -21,7 +21,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# تحسين CSS (تم وضعه في سطر واحد لتجنب المشاكل)
+# تحسين CSS
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap');
@@ -83,7 +83,7 @@ for key in ['active_sessions', 'bot_requests', 'session_id', 'is_admin', 'show_c
             'db_loaded', 'db_last_update', 'db_size', 'downloading_now', 
             'last_download_time', 'last_large_download_time', 
             'last_user_session_download', 'user_session_downloads_count', 'downloads_count',
-            'search_limit', 'last_query']: # Added search state vars
+            'search_limit', 'last_query']:
     if key not in st.session_state:
         if key == 'bot_requests': st.session_state[key] = {i: [] for i in range(len(BOT_TOKENS))}
         elif key == 'active_sessions': st.session_state[key] = {}
@@ -235,7 +235,7 @@ def get_db_connection():
     except: return None
 
 # ═══════════════════════════════════════════════════════════════
-# 🔍 البحث الذكي (تم التعديل: ترتيب النتائج)
+# 🔍 البحث الذكي (تم التعديل: حساب العدد الكلي)
 # ═══════════════════════════════════════════════════════════════
 
 def normalize_arabic_text(text):
@@ -244,13 +244,13 @@ def normalize_arabic_text(text):
     return ' '.join(text.split()).strip().lower()
 
 def search_books_advanced(query, filters=None, limit=50):
-    if not query or len(query) < 2: return []
+    if not query or len(query) < 2: return [], 0
     filters = filters or {}
     clean_query = normalize_arabic_text(query)
     words = [w for w in clean_query.split() if len(w) > 1]
-    if not words: return []
+    if not words: return [], 0
     conn = get_db_connection()
-    if not conn: return []
+    if not conn: return [], 0
     try:
         cursor = conn.cursor()
         cursor.execute("PRAGMA table_info(books)")
@@ -261,7 +261,7 @@ def search_books_advanced(query, filters=None, limit=50):
         if 'normalized_name' in existing_columns: search_targets.append('normalized_name')
         if 'normalized_desc' in existing_columns: search_targets.append('normalized_desc')
         if 'description' in existing_columns and 'normalized_desc' not in existing_columns: search_targets.append('description')
-        if not search_targets: return []
+        if not search_targets: return [], 0
         
         sql_parts, params = [], []
         for word in words:
@@ -278,11 +278,23 @@ def search_books_advanced(query, filters=None, limit=50):
                 where += " AND file_extension = ?"
                 params.append(filters['format'])
         
-        # --- تعديل 3: تحسين ترتيب النتائج (اسم الكتاب أولاً ثم الوصف) ---
+        # --- تعديل: حساب العدد الكلي أولاً ---
+        count_sql = f"SELECT COUNT(*) FROM books WHERE {where}"
+        # نستخدم نسخة من params لأن الاستعلام الثاني سيضيف عليها
+        count_params = list(params) 
+        cursor.execute(count_sql, count_params)
+        total_count = cursor.fetchone()[0]
+
+        # --- ترتيب النتائج ---
         target_name_col = 'normalized_name' if 'normalized_name' in existing_columns else 'file_name'
         
-        # الأولوية للنتائج التي يحتوي اسمها على كامل نص البحث
-        order_clause = f"(CASE WHEN {target_name_col} LIKE ? THEN 0 ELSE 1 END), "
+        order_clause = f"""
+        CASE 
+            WHEN {target_name_col} = ? THEN 0 
+            WHEN {target_name_col} LIKE ? THEN 1 
+            ELSE 2 
+        END, 
+        """
         
         if 'normalized_name' in existing_columns:
             order_clause += "length(normalized_name) ASC, message_id DESC"
@@ -291,8 +303,9 @@ def search_books_advanced(query, filters=None, limit=50):
         else:
              order_clause += "message_id DESC"
 
-        # إضافة معامل البحث لترتيب النتائج (لـ CASE)
-        params.append(f'%{clean_query}%')
+        # إضافة متغيرات الترتيب للقائمة
+        params.append(clean_query)         # للتطابق التام
+        params.append(f'{clean_query}%')   # لمن يبدأ بالكلمة
         
         sql = f"SELECT * FROM books WHERE {where} ORDER BY {order_clause} LIMIT ?"
         params.append(limit)
@@ -300,16 +313,17 @@ def search_books_advanced(query, filters=None, limit=50):
         cursor.execute(sql, params)
         results = [dict(r) for r in cursor.fetchall()]
         conn.close()
-        return results
+        return results, total_count
     except Exception as e:
         if st.session_state.get('is_admin', False): st.error(f"Error: {e}")
         try:
             cursor.execute(f"SELECT * FROM books WHERE file_name LIKE ? LIMIT ?", (f'%{query}%', limit))
-            return [dict(r) for r in cursor.fetchall()]
-        except: return []
+            res = [dict(r) for r in cursor.fetchall()]
+            return res, len(res) # Fallback return
+        except: return [], 0
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد
+# 📥 منطق التحميل الموحد (مخفي التفاصيل)
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -343,7 +357,7 @@ def download_via_bot(file_id, file_name):
         file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile"
         response = requests.get(file_info_url, params={"file_id": file_id}, timeout=10)
         if response.status_code != 200:
-            print(f"⚠️ Bot getFile Error ({response.status_code}): {response.text}")
+            if st.session_state.get('is_admin'): print(f"⚠️ Bot getFile Error ({response.status_code})")
             return None
         result = response.json()
         if not result.get("ok"):
@@ -362,7 +376,7 @@ def download_via_bot(file_id, file_name):
                 return file_data.getvalue()
         return None
     except Exception as e:
-        print(f"❌ Bot Exception: {e}")
+        if st.session_state.get('is_admin'): print(f"❌ Bot Exception: {e}")
         return None
 
 def download_via_telethon(message_id, file_name):
@@ -379,7 +393,11 @@ def download_via_telethon(message_id, file_name):
         from telethon.sync import TelegramClient
         from telethon.sessions import StringSession
         
-        with st.spinner(f"☁️ Telethon يحمّل: {file_name[:30]}..."):
+        # رسالة عامة للمستخدم
+        msg = f"☁️ جاري الاتصال بالمصدر..."
+        if st.session_state.get('is_admin'): msg = f"☁️ Telethon يحمّل: {file_name[:30]}..."
+
+        with st.spinner(msg):
             client = TelegramClient(
                 StringSession(USER_SESSION_STRING),
                 USER_API_ID,
@@ -411,12 +429,12 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
     
     if not can_download:
         if method == "unavailable":
-            st.error("❌ الملف كبير جداً - تحتاج جلسة مستخدم مفعّلة")
+            st.error("❌ الملف كبير جداً - تواصل مع الإدارة")
             return None
         
         msg_holder = st.empty()
         for i in range(int(wait_time), 0, -1):
-            msg_holder.info(f"🔄 انتظر {i} ثواني لتجنب الحظر...")
+            msg_holder.info(f"🔄 جاري تجهيز الرابط ({i})...")
             time.sleep(1)
         msg_holder.empty()
     
@@ -428,7 +446,7 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
         
         if file_size_mb > 20:
             if not USER_SESSION_AVAILABLE:
-                st.error("❌ جلسة المستخدم مطلوبة للملفات الكبيرة")
+                st.error("❌ جلسة غير متاحة للملفات الكبيرة")
                 return None
             
             file_data = download_via_telethon(message_id, file_name)
@@ -507,29 +525,36 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
             
             return file_data, file_name
         else:
-            st.error("❌ فشل التحميل من جميع المصادر - تحقق من file_id أو message_id")
             if st.session_state.get('is_admin'):
+                st.error("❌ فشل التحميل من جميع المصادر")
                 st.info(f"🔍 Debug: file_id={file_id}, message_id={message_id}, size={file_size_mb}MB")
+            else:
+                st.error("❌ تعذر تحميل الملف حالياً، حاول لاحقاً.")
             return None
     
     except Exception as e:
-        st.error(f"❌ خطأ غير متوقع: {str(e)[:150]}")
+        if st.session_state.get('is_admin'):
+            st.error(f"❌ خطأ غير متوقع: {str(e)[:150]}")
+        else:
+            st.error("❌ حدث خطأ في النظام.")
         return None
     
     finally:
         st.session_state.downloading_now = False
 
 # ═══════════════════════════════════════════════════════════════
-# 🖥️ الواجهة والعرض (تم التعديل: إظهار الوصف كاملاً)
+# 🖥️ الواجهة والعرض (بدون امتداد، مع الوصف الكامل)
 # ═══════════════════════════════════════════════════════════════
 
 def render_book_card_clean(row):
-    """
-    نسخة محسنة تعرض الوصف كاملاً
-    """
     file_size_mb = row.get('size_mb', 0)
     file_ext = row.get('file_extension', 'pdf').replace('.', '')
     pages = row.get('pages')
+    
+    # إزالة الامتداد من اسم الكتاب في العرض
+    display_name = row.get('file_name', 'بدون عنوان')
+    if file_ext and display_name.lower().endswith(f".{file_ext}".lower()):
+        display_name = display_name[:-len(file_ext)-1]
     
     pages_html = ""
     if pages and str(pages).isdigit() and int(pages) > 0:
@@ -540,11 +565,10 @@ def render_book_card_clean(row):
     if desc:
         desc = re.sub(r'http\S+', '', desc)
         desc = re.sub(r'@\w+', '', desc)
-        # --- تعديل 2: إزالة الحذف الجزئي للوصف وإظهاره كاملاً ---
         safe_desc = html.escape(desc) 
         desc_html = f'<div class="book-desc">{safe_desc}</div>'
 
-    card_html = f"""<div class="book-card"><div class="book-title">📖 {row.get('file_name', 'بدون عنوان')}</div><div class="book-meta"><span class="meta-item" style="color: #0e7490; background: #cffafe;">📂 {file_ext.upper()}</span><span class="meta-item">💾 {file_size_mb:.2f} MB</span>{pages_html}</div>{desc_html}</div>"""
+    card_html = f"""<div class="book-card"><div class="book-title">📖 {display_name}</div><div class="book-meta"><span class="meta-item" style="color: #0e7490; background: #cffafe;">📂 {file_ext.upper()}</span><span class="meta-item">💾 {file_size_mb:.2f} MB</span>{pages_html}</div>{desc_html}</div>"""
     
     st.markdown(card_html, unsafe_allow_html=True)
     
@@ -614,20 +638,19 @@ else:
     with col_btn:
         do_search = st.button("بحث", use_container_width=True, type="primary")
 
-    # --- تعديل 1: منطق عرض المزيد (Pagination) ---
     if query != st.session_state.last_query or do_search:
         st.session_state.search_limit = 30
         st.session_state.last_query = query
         
     if query or do_search:
         with st.spinner("جاري البحث..."):
-            results = search_books_advanced(query, limit=st.session_state.search_limit)
+            results, total_count = search_books_advanced(query, limit=st.session_state.search_limit)
         
         if results:
-            st.success(f"النتائج: {len(results)}")
+            # --- تعديل: عرض العدد الحالي من العدد الكلي ---
+            st.success(f"النتائج: عرض {len(results)} من أصل {total_count} نتيجة")
             for row in results: render_book_card_clean(row)
             
-            # زر "عرض المزيد"
             if len(results) >= st.session_state.search_limit:
                 st.markdown("---")
                 col_more1, col_more2, col_more3 = st.columns([1, 2, 1])
