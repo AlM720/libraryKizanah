@@ -235,12 +235,13 @@ def get_db_connection():
     except: return None
 
 # ═══════════════════════════════════════════════════════════════
-# 🔍 البحث الذكي (تم التعديل: ترتيب الأرقام والنتائج المتطابقة)
+# 🔍 البحث الذكي (تم التعديل: الترتيب الدقيق جداً)
 # ═══════════════════════════════════════════════════════════════
 
 def normalize_arabic_text(text):
     if not text: return ""
-    text = re.sub(r'[^\w\s]', ' ', text)
+    # إضافة مسافات حول الرموز لفصل الكلمات بشكل أفضل
+    text = re.sub(r'([^\w\s])', r' \1 ', text)
     return ' '.join(text.split()).strip().lower()
 
 def search_books_advanced(query, filters=None, limit=50):
@@ -287,51 +288,43 @@ def search_books_advanced(query, filters=None, limit=50):
         # 2. بناء الترتيب الذكي (Rank)
         target_name_col = 'normalized_name' if 'normalized_name' in existing_columns else 'file_name'
         
-        # منطق الترتيب الدقيق:
-        # 0: تطابق تام (الشاي)
-        # 1: كلمة كاملة (قف الشاي، الشاي الأخضر)
-        # 2: يبدأ بالأحرف (الشايع)
-        # 3: غير ذلك
+        # حيلة الحشو (Padding Trick) لضمان مطابقة الكلمة الكاملة
+        # نضيف مسافة في بداية ونهاية الحقل، ونبحث عن " الكلمة " بمسافات
+        # هذا يضمن أن "الشاي" لن تطابق "الشايع" في هذه المرحلة
         
         rank_clause = f"""
         CASE 
-            WHEN {target_name_col} = ? THEN 0 
-            WHEN {target_name_col} LIKE ? THEN 1    -- يبدأ بكلمة كاملة
-            WHEN {target_name_col} LIKE ? THEN 1    -- ينتهي بكلمة كاملة
-            WHEN {target_name_col} LIKE ? THEN 1    -- كلمة كاملة في الوسط
-            WHEN {target_name_col} LIKE ? THEN 2    -- يبدأ بالأحرف (جزء من كلمة)
+            WHEN {target_name_col} = ? THEN 0                          -- تطابق تام (الشاي)
+            WHEN ' ' || {target_name_col} || ' ' LIKE ? THEN 1         -- كلمة كاملة ( قف الشاي )
+            WHEN {target_name_col} LIKE ? THEN 2                       -- تبدأ بالأحرف ( الشايع )
             ELSE 3 
         END
         """
         
-        # تجميع معاملات الترتيب
         rank_params = [
-            clean_query,             # Exact
-            f"{clean_query} %",      # Starts with + space
-            f"% {clean_query}",      # Space + Ends with
-            f"% {clean_query} %",    # Space + Word + Space
-            f"{clean_query}%"        # Starts with chars
+            clean_query,                # Exact Match
+            f"% {clean_query} %",       # Whole Word Match (Note spaces)
+            f"{clean_query}%"           # Starts with
         ]
 
-        # دمج المعاملات
         full_params = rank_params + params + [limit]
         
-        # استعلام SQL للحصول على النتائج مع الرتبة
+        # الترتيب المبدئي: الرتبة أولاً، ثم طول الاسم (الأقصر أفضل)
         sql = f"SELECT *, ({rank_clause}) as match_rank FROM books WHERE {where} ORDER BY match_rank ASC, length({target_name_col}) ASC LIMIT ?"
         
         cursor.execute(sql, full_params)
         results = [dict(r) for r in cursor.fetchall()]
         conn.close()
 
-        # 3. التحسين النهائي (Natural Sorting) في بايثون
-        # هذا يدمج الرتبة اللغوية مع الترتيب الرقمي الصحيح (1 ثم 2 ثم 10)
+        # 3. الترتيب النهائي (Python) لدمج الأرقام
         if results:
             def smart_sort_key(row):
                 text = row['file_name']
-                # تقسيم النص إلى أرقام ونصوص
+                # Natural Sort: تقسيم النص لأرقام وحروف
                 parts = [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
                 
-                # الترتيب حسب الرتبة أولاً (الشاي قبل الشايع)، ثم الأرقام (1 قبل 2)
+                # المعيار الأول: الرتبة من SQL (الشاي قبل الشايع)
+                # المعيار الثاني: الأجزاء (لترتيب الأرقام 1 قبل 2 قبل 10)
                 return (row['match_rank'], parts)
             
             results.sort(key=smart_sort_key)
