@@ -265,32 +265,16 @@ def get_best_bot():
     st.session_state.bot_requests[best_idx].append(current_time)
     return BOT_TOKENS[best_idx]
 
-def get_telegram_file_url(file_id):
-    """الحصول على رابط مباشر لملف Telegram للمعاينة"""
-    try:
-        bot_token = BOT_TOKENS[0]
-        r = requests.get(
-            f"https://api.telegram.org/bot{bot_token}/getFile",
-            params={'file_id': file_id},
-            timeout=5
-        )
-        
-        if r.status_code == 200 and 'result' in r.json():
-            path = r.json()['result']['file_path']
-            direct_url = f"https://api.telegram.org/file/bot{bot_token}/{path}"
-            return direct_url
-    except:
-        pass
-    return None
-
 def check_cooldowns(file_size_mb):
     current_time = time.time()
+    # Logic for User Session (Large Files)
     if file_size_mb >= 20: 
         if not USER_SESSION_AVAILABLE: return False, 0, "unavailable"
         elapsed = current_time - st.session_state.last_user_session_download
         if elapsed < USER_SESSION_MIN_INTERVAL: return False, USER_SESSION_MIN_INTERVAL - elapsed, "user_session"
         return True, 0, "user_session"
     
+    # Logic for Bots (Standard Files)
     is_large = file_size_mb >= LARGE_FILE_THRESHOLD_MB
     last_time = st.session_state.last_large_download_time if is_large else st.session_state.last_download_time
     req_interval = LARGE_FILE_MIN_INTERVAL if is_large else MIN_REQUEST_INTERVAL
@@ -300,24 +284,24 @@ def check_cooldowns(file_size_mb):
     return True, 0, "bot"
 
 def unified_downloader(file_id, file_name, file_size_mb, file_ext):
-    """دالة تحميل مركزية - إصلاح return tuple"""
+    """دالة تحميل مركزية ذكية تخفي التفاصيل عن المستخدم"""
     
     if st.session_state.downloading_now:
         st.warning("⏳ يرجى الانتظار، هناك ملف قيد التحميل حالياً.")
-        return None, None
+        return None, None  # ✅ FIXED: return tuple
 
+    # التحقق من الإتاحة
     can_download, wait_time, method = check_cooldowns(file_size_mb)
     
     if not can_download:
         if method == "unavailable":
-            st.error("عذراً، هذا الملف غير متاح للتحميل حالياً.")
-            if st.session_state.is_admin:
-                st.info("💡 الملف يتطلب User Session غير متاح")
-            return None, None
+            st.error("عذراً، هذا الملف غير متاح للتحميل المباشر حالياً.")
+            return None, None  # ✅ FIXED: return tuple
         
+        # رسالة انتظار لطيفة
         msg_holder = st.empty()
         for i in range(int(wait_time), 0, -1):
-            msg_holder.info(f"🔄 جاري تجهيز الملف... ({i} ثانية)")
+            msg_holder.info(f"🔄 جاري تجهيز الملف... (يرجى الانتظار {i} ثواني)")
             time.sleep(1)
         msg_holder.empty()
 
@@ -326,19 +310,17 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
     try:
         file_data = None
         
-        # ملفات كبيرة (User Session)
-        if file_size_mb >= 20:
+        # Scenario 1: ملف ضخم (Use Telethon/User Session)
+        if method == "user_session" or (method == "bot" and file_size_mb > 20):
             if not USER_SESSION_AVAILABLE:
-                st.error("الملف كبير ولا يمكن تحميله حالياً.")
-                if st.session_state.is_admin:
-                    st.warning("⚙️ يتطلب User Session")
-                return None, None
+                st.error("عذراً، الملف كبير جداً ولا يمكن تحميله حالياً.")
+                return None, None  # ✅ FIXED: return tuple
                 
             from telethon.sync import TelegramClient
             from telethon.sessions import StringSession
             import io
             
-            with st.spinner("📥 جاري التحميل..."):
+            with st.spinner("📥 جاري جلب الملف من السحابة..."):
                 try:
                     client = TelegramClient(StringSession(USER_SESSION_STRING), USER_API_ID, USER_API_HASH)
                     with client:
@@ -349,58 +331,38 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
                         
                     st.session_state.last_user_session_download = time.time()
                     st.session_state.user_session_downloads_count += 1
-                    
-                    if st.session_state.is_admin:
-                        st.success(f"✅ تم عبر User Session ({file_size_mb:.1f} MB)")
-                        
                 except Exception as e:
                     st.error("تعذر جلب الملف. يرجى المحاولة لاحقاً.")
-                    if st.session_state.is_admin: st.error(f"🔧 {str(e)}")
-                    return None, None
+                    if st.session_state.is_admin: st.error(str(e))
+                    return None, None  # ✅ FIXED: return tuple
         
-        # ملفات عادية (Bot API)
+        # Scenario 2: ملف عادي (Use Bot API)
         else:
             bot_token = get_best_bot()
             with st.spinner("📥 جاري التحميل..."):
-                try:
-                    r = requests.get(f"https://api.telegram.org/bot{bot_token}/getFile", params={'file_id': file_id}, timeout=10)
-                    if r.status_code == 200 and 'result' in r.json():
-                        path = r.json()['result']['file_path']
-                        dl_url = f"https://api.telegram.org/file/bot{bot_token}/{path}"
-                        file_res = requests.get(dl_url, stream=True, timeout=30)
-                        if file_res.status_code == 200:
-                            file_data = file_res.content
-                            if file_size_mb >= LARGE_FILE_THRESHOLD_MB:
-                                st.session_state.last_large_download_time = time.time()
-                            else:
-                                st.session_state.last_download_time = time.time()
-                            
-                            if st.session_state.is_admin:
-                                st.success(f"✅ تم عبر Bot API ({file_size_mb:.1f} MB)")
+                r = requests.get(f"https://api.telegram.org/bot{bot_token}/getFile", params={'file_id': file_id})
+                if r.status_code == 200:
+                    path = r.json()['result']['file_path']
+                    dl_url = f"https://api.telegram.org/file/bot{bot_token}/{path}"
+                    file_res = requests.get(dl_url, stream=True)
+                    if file_res.status_code == 200:
+                        file_data = file_res.content
+                        if file_size_mb >= LARGE_FILE_THRESHOLD_MB:
+                            st.session_state.last_large_download_time = time.time()
                         else:
-                            st.error("فشل التحميل")
-                            return None, None
-                    else:
-                        st.error("تعذر الوصول للملف")
-                        return None, None
-                except Exception as e:
-                    st.error("حدث خطأ في الاتصال")
-                    if st.session_state.is_admin: st.error(f"🔧 {str(e)}")
-                    return None, None
+                            st.session_state.last_download_time = time.time()
 
         if file_data:
             st.session_state.downloads_count += 1
-            if not file_name.endswith(f'.{file_ext}'): 
-                file_name = f"{file_name}.{file_ext}"
-            return file_data, file_name
+            if not file_name.endswith(f'.{file_ext}'): file_name = f"{file_name}.{file_ext}"
+            return file_data, file_name  # ✅ FIXED: return tuple
         else:
-            st.error("لم يتم استرجاع الملف")
-            return None, None
+            st.error("حدث خطأ أثناء الاتصال بالخادم.")
+            return None, None  # ✅ FIXED: return tuple
             
     except Exception as e:
-        st.error("حدث خطأ غير متوقع")
-        if st.session_state.is_admin: st.error(f"🔧 {str(e)}")
-        return None, None
+        st.error("حدث خطأ غير متوقع.")
+        return None, None  # ✅ FIXED: return tuple
     finally:
         st.session_state.downloading_now = False
 
@@ -419,13 +381,6 @@ def render_book_card_clean(row):
     desc = re.sub(r'http\S+', '', desc)
     desc = re.sub(r'@\w+', '', desc)
     
-    # تحديد إمكانية التحميل (خلفياً)
-    can_download = True
-    if file_size_mb > USER_SESSION_MAX_SIZE_MB:
-        can_download = False
-    elif file_size_mb >= 20 and not USER_SESSION_AVAILABLE:
-        can_download = False
-    
     st.markdown(f"""
     <div class="book-card">
         <div class="book-title">📖 {row.get('file_name', 'بدون عنوان')}</div>
@@ -438,24 +393,17 @@ def render_book_card_clean(row):
     </div>
     """, unsafe_allow_html=True)
     
-    # أزرار التحميل والمعاينة
-    col1, col2, col3 = st.columns([1, 1, 2])
-    
+    # زر التحميل الموحد (الذكي)
+    col1, col2 = st.columns([1, 3])
     with col1:
-        if not can_download:
-            st.button("⚠️ غير متاح", key=f"btn_{row['id']}", disabled=True, use_container_width=True)
-            if st.session_state.is_admin:
-                if file_size_mb > USER_SESSION_MAX_SIZE_MB:
-                    st.caption(f"🔧 كبير جداً ({file_size_mb:.0f} MB)")
-                else:
-                    st.caption("🔧 يتطلب User Session")
+        if file_size_mb > USER_SESSION_MAX_SIZE_MB:
+            st.warning("⚠️ الملف كبير جداً للتحميل")
         else:
-            if st.button("⬇️ تحميل", key=f"btn_{row['id']}", use_container_width=True, type="primary"):
+            if st.button("⬇️ تحميل الكتاب", key=f"btn_{row['id']}", use_container_width=True, type="primary"):
                 data, name = unified_downloader(row['file_id'], row['file_name'], file_size_mb, file_ext)
-                
-                if data and name:
+                if data and name:  # ✅ FIXED: check both values
                     st.download_button(
-                        label="💾 حفظ الملف",
+                        label="💾 حفظ الملف في جهازك",
                         data=data,
                         file_name=name,
                         mime='application/octet-stream',
@@ -463,28 +411,6 @@ def render_book_card_clean(row):
                         use_container_width=True
                     )
                     st.balloons()
-    
-    with col2:
-        if file_ext.lower() in ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'xls', 'xlsx']:
-            if st.button("👁️ معاينة", key=f"view_{row['id']}", use_container_width=True):
-                preview_link = get_telegram_file_url(row['file_id'])
-                
-                if preview_link:
-                    viewer_url = f"https://docs.google.com/viewer?url={preview_link}&embedded=true"
-                    st.markdown(f"""
-                    <a href="{viewer_url}" target="_blank" style="
-                        display: inline-block;
-                        padding: 0.5rem 1rem;
-                        background: #0e7490;
-                        color: white;
-                        text-decoration: none;
-                        border-radius: 8px;
-                        font-weight: 600;
-                        margin-top: 0.5rem;
-                    ">🔗 فتح المعاينة</a>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.info("المعاينة غير متاحة")
 
 # ═══════════════════════════════════════════════════════════════
 # 🖥️ واجهة التطبيق الرئيسية
@@ -503,7 +429,7 @@ for sid in list(st.session_state.active_sessions.keys()):
 active_count = len(st.session_state.active_sessions)
 max_allowed = 15
 
-# الشريط العلوي
+# --- منطقة الشريط العلوي ---
 st.markdown(f"""
 <div class="toolbar">
     <div class="app-title">🏛️ المكتبة الرقمية</div>
@@ -578,30 +504,16 @@ else:
     if st.session_state.is_admin:
         with st.expander("🛠️ لوحة تحكم النظام", expanded=False):
             st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
+            st.write(f"عدد الجلسات النشطة: {len(st.session_state.active_sessions)}")
+            st.write(f"عدد التحميلات (User Session): {st.session_state.user_session_downloads_count}")
             
-            st.write("**📊 إحصائيات:**")
-            st.write(f"- الجلسات النشطة: {len(st.session_state.active_sessions)}")
-            st.write(f"- تحميلات Bot: {st.session_state.downloads_count}")
-            st.write(f"- تحميلات User Session: {st.session_state.user_session_downloads_count}")
-            st.write(f"- حجم القاعدة: {st.session_state.db_size:.2f} MB")
+            if st.button("إنهاء جميع الجلسات"):
+                st.session_state.active_sessions = {}
+                st.success("تم تصفير الجلسات")
             
-            st.write(f"\n**🔧 الحدود:**")
-            st.write(f"- Bot API: 0-20 MB")
-            st.write(f"- User Session: 20-2000 MB ({'✅ متاح' if USER_SESSION_AVAILABLE else '❌ غير متاح'})")
-            
-            st.divider()
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                if st.button("🧹 تصفير الجلسات", use_container_width=True):
-                    st.session_state.active_sessions = {}
-                    st.success("✅ تم")
-            
-            with col_b:
-                if st.button("🚪 خروج", use_container_width=True):
-                    st.session_state.is_admin = False
-                    st.rerun()
-            
+            if st.button("خروج المشرف"):
+                st.session_state.is_admin = False
+                st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
             
     if st.session_state.session_id:
