@@ -235,7 +235,7 @@ def get_db_connection():
     except: return None
 
 # ═══════════════════════════════════════════════════════════════
-# 🔍 البحث الذكي (تم التعديل: ترتيب دقيق جداً)
+# 🔍 البحث الذكي (تم التعديل: ترتيب الأرقام والنتائج المتطابقة)
 # ═══════════════════════════════════════════════════════════════
 
 def normalize_arabic_text(text):
@@ -278,22 +278,17 @@ def search_books_advanced(query, filters=None, limit=50):
                 where += " AND file_extension = ?"
                 params.append(filters['format'])
         
-        # 1. حساب العدد الكلي (بدون ترتيب)
+        # 1. حساب العدد الكلي
         count_sql = f"SELECT COUNT(*) FROM books WHERE {where}"
         count_params = list(params) 
         cursor.execute(count_sql, count_params)
         total_count = cursor.fetchone()[0]
 
-        # 2. بناء الترتيب الذكي
+        # 2. بناء الترتيب الذكي (Rank)
         target_name_col = 'normalized_name' if 'normalized_name' in existing_columns else 'file_name'
         
-        # منطق الترتيب الجديد:
-        # 0: تطابق تام
-        # 1: الكلمة موجودة ككلمة كاملة (في البداية، النهاية، أو الوسط) - "قف الشاي"
-        # 2: تبدأ بالأحرف (جزء من كلمة) - "الشايع"
-        # 3: غير ذلك
-        
-        order_clause = f"""
+        # منطق الترتيب: 0=تطابق تام، 1=كلمة كاملة، 2=يبدأ بـ، 3=غير ذلك
+        rank_clause = f"""
         CASE 
             WHEN {target_name_col} = ? THEN 0 
             WHEN {target_name_col} LIKE ? THEN 1 
@@ -301,30 +296,53 @@ def search_books_advanced(query, filters=None, limit=50):
             WHEN {target_name_col} LIKE ? THEN 1
             WHEN {target_name_col} LIKE ? THEN 2
             ELSE 3 
-        END, 
+        END
         """
         
-        if 'normalized_name' in existing_columns:
-            order_clause += "length(normalized_name) ASC, message_id DESC"
-        elif 'file_name' in existing_columns:
-            order_clause += "length(file_name) ASC, message_id DESC"
-        else:
-             order_clause += "message_id DESC"
+        # تجميع معاملات الترتيب (5 حالات)
+        rank_params = [
+            clean_query,             # Exact
+            f"{clean_query} %",      # Starts with + space
+            f"% {clean_query}",      # Space + Ends with
+            f"% {clean_query} %",    # Space + Word + Space
+            f"{clean_query}%"        # Starts with chars
+        ]
 
-        # إضافة متغيرات الترتيب بالترتيب الدقيق
-        params.append(clean_query)             # = (تطابق تام)
-        params.append(f"{clean_query} %")      # يبدأ بالكلمة + مسافة
-        params.append(f"% {clean_query}")      # مسافة + ينتهي بالكلمة
-        params.append(f"% {clean_query} %")    # مسافة + الكلمة + مسافة
-        params.append(f"{clean_query}%")       # يبدأ بالأحرف (للشايع)
+        # دمج المعاملات: Rank params + Where params + Limit
+        full_params = rank_params + params + [limit]
         
-        sql = f"SELECT * FROM books WHERE {where} ORDER BY {order_clause} LIMIT ?"
-        params.append(limit)
+        # جملة الاستعلام النهائية مع استخراج Rank لاستخدامه في Python
+        order_clause_sql = "match_rank ASC"
+        if 'normalized_name' in existing_columns:
+            order_clause_sql += ", length(normalized_name) ASC, message_id DESC"
+        elif 'file_name' in existing_columns:
+            order_clause_sql += ", length(file_name) ASC, message_id DESC"
+        else:
+             order_clause_sql += ", message_id DESC"
+
+        sql = f"SELECT *, ({rank_clause}) as match_rank FROM books WHERE {where} ORDER BY {order_clause_sql} LIMIT ?"
         
-        cursor.execute(sql, params)
+        cursor.execute(sql, full_params)
         results = [dict(r) for r in cursor.fetchall()]
         conn.close()
+
+        # 3. التحسين النهائي (Natural Sorting) إذا لم يكن في البحث رقم
+        query_has_digits = any(char.isdigit() for char in query)
+        
+        if not query_has_digits and results:
+            def natural_keys(row):
+                # تقسيم الاسم إلى نصوص وأرقام لترتيبها (vol 1, vol 2, vol 10)
+                text = row['file_name']
+                return (
+                    row['match_rank'], # الحفاظ على أهمية النتيجة (تطابق تام أولاً)
+                    [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
+                )
+            
+            # إعادة ترتيب الـ 30 نتيجة المعروضة فقط
+            results.sort(key=natural_keys)
+
         return results, total_count
+
     except Exception as e:
         if st.session_state.get('is_admin', False): st.error(f"Error: {e}")
         try:
@@ -334,7 +352,7 @@ def search_books_advanced(query, filters=None, limit=50):
         except: return [], 0
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد (مخفي التفاصيل)
+# 📥 منطق التحميل الموحد (تم التعديل: إخفاء التفاصيل عن المستخدم)
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -445,7 +463,7 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
         
         msg_holder = st.empty()
         for i in range(int(wait_time), 0, -1):
-            msg_holder.info(f"🔄 جاري تجهيز الرابط ({i})...")
+            msg_holder.info(f"🔄 جاري تجهيز الرابط ({i})...") # رسالة عامة بدلاً من التحذير من الحظر
             time.sleep(1)
         msg_holder.empty()
     
@@ -540,14 +558,14 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
                 st.error("❌ فشل التحميل من جميع المصادر")
                 st.info(f"🔍 Debug: file_id={file_id}, message_id={message_id}, size={file_size_mb}MB")
             else:
-                st.error("❌ تعذر تحميل الملف حالياً، حاول لاحقاً.")
+                st.error("❌ تعذر تحميل الملف حالياً، حاول لاحقاً.") # رسالة عامة
             return None
     
     except Exception as e:
         if st.session_state.get('is_admin'):
             st.error(f"❌ خطأ غير متوقع: {str(e)[:150]}")
         else:
-            st.error("❌ حدث خطأ في النظام.")
+            st.error("❌ حدث خطأ في النظام.") # رسالة عامة
         return None
     
     finally:
