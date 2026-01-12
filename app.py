@@ -3,6 +3,7 @@ import sqlite3
 import requests
 import time
 import os
+import gdown
 from datetime import datetime, timedelta
 import hashlib
 import re
@@ -97,7 +98,7 @@ for key in ['active_sessions', 'bot_requests', 'session_id', 'is_admin', 'show_c
 USER_SESSION_AVAILABLE = bool(USER_API_ID and USER_API_HASH and USER_SESSION_STRING)
 
 # ═══════════════════════════════════════════════════════════════
-# 🛠️ الدوال المساعدة والتحميل الذكي (FIXED)
+# 🛠️ الدوال المساعدة وتحميل القاعدة (Gdown)
 # ═══════════════════════════════════════════════════════════════
 
 def extract_file_id(url_or_id):
@@ -109,38 +110,12 @@ def extract_file_id(url_or_id):
         if match: return match.group(1)
     return url_or_id
 
-def download_file_from_google_drive(id, destination):
-    """دالة محسنة جداً لتجاوز تأكيد الفيروسات وتحميل الملف كاملاً"""
-    URL = "https://docs.google.com/uc?export=download"
-    session = requests.Session()
-
-    # 1. الطلب الأول للحصول على الكوكيز والتوكن
-    response = session.get(URL, params={'id': id}, stream=True)
-    token = None
-    for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
-            token = value
-            break
-
-    # 2. إذا وجدنا توكن التحذير، نرسل طلب التأكيد
-    if token:
-        params = {'id': id, 'confirm': token}
-        response = session.get(URL, params=params, stream=True)
-    
-    # 3. حفظ الملف
-    CHUNK_SIZE = 32768
-    with open(destination, "wb") as f:
-        for chunk in response.iter_content(CHUNK_SIZE):
-            if chunk: f.write(chunk)
-
 def init_db():
     if not GDRIVE_FILE_ID: return False
     
-    # إذا الملف موجود، نفحص حجمه وصلاحيته
+    # التحقق من وجود الملف وصلاحيته
     if os.path.exists(DATABASE_FILE):
-        file_size = os.path.getsize(DATABASE_FILE)
-        # إذا الحجم صغير جداً (أقل من 100 كيلوبايت) فهو تالف
-        if file_size < 102400: 
+        if os.path.getsize(DATABASE_FILE) < 102400: # 100KB
             try: os.remove(DATABASE_FILE)
             except: pass
         elif time.time() - os.path.getmtime(DATABASE_FILE) < DB_CACHE_TIME:
@@ -149,31 +124,29 @@ def init_db():
                 conn.execute("SELECT 1 FROM books LIMIT 1")
                 conn.close()
                 st.session_state.db_loaded = True
-                st.session_state.db_size = file_size / (1024 * 1024)
+                st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
                 return True
             except:
                 try: os.remove(DATABASE_FILE)
                 except: pass
-    
-    # تحميل جديد
+
+    # التحميل باستخدام gdown (الحل الجذري)
     try:
         file_id = extract_file_id(GDRIVE_FILE_ID)
+        url = f'https://drive.google.com/uc?id={file_id}'
         
-        # عرض شريط تقدم للمشرف
-        with st.spinner("📥 جاري تحميل قاعدة البيانات (قد يستغرق وقتاً لكبر الحجم)..."):
-            download_file_from_google_drive(file_id, DATABASE_FILE)
+        with st.spinner("📦 جاري تحميل قاعدة البيانات الكبيرة..."):
+            # quiet=False لإظهار الأخطاء في الكونسول، fuzzy=True لتخمين الاسم
+            output = gdown.download(url, DATABASE_FILE, quiet=False, fuzzy=True)
         
-        # التأكد من نجاح التحميل بعد الانتهاء
-        if os.path.exists(DATABASE_FILE):
+        if output and os.path.exists(DATABASE_FILE):
             final_size = os.path.getsize(DATABASE_FILE)
-            if final_size < 102400: # فشل التحميل (ملف صغير)
-                st.error("❌ فشل تحميل القاعدة. تأكد من صحة الرابط.")
-                return False
-            
-            st.session_state.db_loaded = True
-            st.session_state.db_last_update = time.time()
-            st.session_state.db_size = final_size / (1024 * 1024)
-            return True
+            if final_size > 102400: # أكبر من 100KB
+                st.session_state.db_loaded = True
+                st.session_state.db_last_update = time.time()
+                st.session_state.db_size = final_size / (1024 * 1024)
+                return True
+        
         return False
     except Exception as e:
         st.error(f"حدث خطأ أثناء تحميل القاعدة: {e}")
@@ -262,7 +235,7 @@ def search_books_advanced(query, filters=None, limit=50):
         except: return []
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل
+# 📥 منطق التحميل الموحد
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -457,7 +430,7 @@ else:
             if st.session_state.is_admin:
                 # تشخيص للمشرف فقط
                 db_size = st.session_state.db_size
-                st.warning(f"تشخيص المشرف: حجم القاعدة المحملة {db_size:.2f} MB. (يجب أن يكون أكثر من 0.1)")
+                st.warning(f"تشخيص المشرف: حجم القاعدة المحملة {db_size:.2f} MB.")
 
     if st.session_state.is_admin:
         with st.expander("🛠️ التحكم", expanded=False):
