@@ -235,7 +235,7 @@ def get_db_connection():
     except: return None
 
 # ═══════════════════════════════════════════════════════════════
-# 🔍 البحث الذكي (تم التعديل: الترتيب الدقيق ومعالجة الفراغات)
+# 🔍 البحث الذكي (تم حذف منطق ترتيب الأرقام)
 # ═══════════════════════════════════════════════════════════════
 
 def normalize_arabic_text(text):
@@ -284,43 +284,40 @@ def search_books_advanced(query, filters=None, limit=50):
         cursor.execute(count_sql, count_params)
         total_count = cursor.fetchone()[0]
 
-        # 2. بناء الترتيب الذكي (Rank)
+        # 2. بناء الترتيب الذكي (Rank) عبر SQL فقط
         target_name_col = 'normalized_name' if 'normalized_name' in existing_columns else 'file_name'
         
-        # التعديل: استبدال الشرطة السفلية بمسافة داخل قاعدة البيانات أثناء الترتيب
-        # هذا يضمن أن "أكواب_الشاي" تُقرأ "أكواب الشاي" وتتطابق ككلمة كاملة
+        # الترتيب:
+        # 0. تطابق تام
+        # 1. كلمة كاملة (بما في ذلك فصل الشرطات السفلية)
+        # 2. تبدأ بالكلمة
+        # 3. تحتوي على الكلمة
         rank_clause = f"""
         CASE 
-            WHEN {target_name_col} = ? THEN 0                                    -- 0. تطابق تام
-            WHEN ' ' || REPLACE({target_name_col}, '_', ' ') || ' ' LIKE ? THEN 1 -- 1. كلمة كاملة (أكواب الشاي)
-            WHEN {target_name_col} LIKE ? THEN 2                                 -- 2. تبدأ بالأحرف (الشائعات)
-            ELSE 3                                                               -- 3. تحتوي على الأحرف
+            WHEN {target_name_col} = ? THEN 0
+            WHEN ' ' || REPLACE({target_name_col}, '_', ' ') || ' ' LIKE ? THEN 1
+            WHEN {target_name_col} LIKE ? THEN 2
+            ELSE 3
         END
         """
         
         rank_params = [
-            clean_query,                # تطابق تام
-            f"% {clean_query} %",       # كلمة كاملة (مع استخدام REPLACE)
-            f"{clean_query}%",          # تبدأ بالأحرف
+            clean_query,                # 0. تطابق تام
+            f"% {clean_query} %",       # 1. كلمة كاملة
+            f"{clean_query}%",          # 2. تبدأ بـ
         ]
 
         full_params = rank_params + params + [limit]
         
+        # الترتيب: حسب الرتبة (match_rank) أولاً، ثم حسب قصر الاسم (الأقصر أفضل)
         sql = f"SELECT *, ({rank_clause}) as match_rank FROM books WHERE {where} ORDER BY match_rank ASC, length({target_name_col}) ASC LIMIT ?"
         
         cursor.execute(sql, full_params)
         results = [dict(r) for r in cursor.fetchall()]
         conn.close()
 
-        # 3. الترتيب النهائي (Python)
-        if results:
-            def smart_sort_key(row):
-                text = row['file_name']
-                parts = [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
-                return (row['match_rank'], parts)
-            
-            results.sort(key=smart_sort_key)
-
+        # تم حذف كود الترتيب البرمجي (Python Sort) الذي يعتمد على الأرقام
+        
         return results, total_count
 
     except Exception as e:
