@@ -3,6 +3,7 @@ import sqlite3
 import requests
 import time
 import os
+import shutil
 import gdown
 from datetime import datetime, timedelta
 import hashlib
@@ -62,16 +63,24 @@ try:
     BOT_TOKENS = [st.secrets["bot1"], st.secrets["bot2"], st.secrets["bot3"]]
     CHANNEL_ID = st.secrets["channelid"]
     ADMIN_PASSWORD = st.secrets["password"]
-    GDRIVE_FOLDER_ID = st.secrets.get("gdrive_folder_id", "")  # ✅ تغيير: المجلد بدلاً من ملف واحد
     USER_API_ID = st.secrets.get("user_api_id", "")
     USER_API_HASH = st.secrets.get("user_api_hash", "")
     USER_SESSION_STRING = st.secrets.get("user_session_string", "")
-except:
-    st.error("⚠️ خطأ في إعدادات النظام الداخلي (Secrets)")
+    
+    # 👇👇👇 جلب معرفات الأجزاء من الأسرار 👇👇👇
+    # يجب أن تكون في الأسرار تحت قسم [db_parts]
+    if "db_parts" in st.secrets:
+        DB_PARTS = dict(st.secrets["db_parts"])
+    else:
+        st.error("⚠️ لم يتم العثور على قسم [db_parts] في أسرار Streamlit")
+        st.stop()
+        
+except Exception as e:
+    st.error(f"⚠️ خطأ في إعدادات النظام الداخلي (Secrets): {e}")
     st.stop()
 
-DATABASE_FILE = "/tmp/books_merged.db"  # ✅ تغيير: قاعدة مدمجة
-DB_TEMP_DIR = "/tmp/db_files"  # ✅ جديد: مجلد مؤقت للملفات
+DATABASE_FILE = "/tmp/books_merged.db"
+DB_TEMP_DIR = "/tmp/db_parts"
 DB_CACHE_TIME = 3600
 SESSION_TIMEOUT = 600
 MIN_REQUEST_INTERVAL = 3
@@ -88,63 +97,56 @@ USER_SESSION_MAX_SIZE_MB = 2000
 for key in ['active_sessions', 'bot_requests', 'session_id', 'is_admin', 'show_counter', 
             'db_loaded', 'db_last_update', 'db_size', 'downloading_now', 
             'last_download_time', 'last_large_download_time', 
-            'last_user_session_download', 'user_session_downloads_count', 'downloads_count',
-            'db_files_count']:  # ✅ جديد: عدد الملفات المحملة
+            'last_user_session_download', 'user_session_downloads_count', 'downloads_count']:
     if key not in st.session_state:
         if key == 'bot_requests': st.session_state[key] = {i: [] for i in range(len(BOT_TOKENS))}
         elif key == 'active_sessions': st.session_state[key] = {}
         elif key in ['show_counter', 'is_admin', 'db_loaded', 'downloading_now']: st.session_state[key] = False
-        elif key in ['db_last_update', 'db_size', 'user_session_downloads_count', 'downloads_count', 'db_files_count']: st.session_state[key] = 0
+        elif key in ['db_last_update', 'db_size', 'user_session_downloads_count', 'downloads_count']: st.session_state[key] = 0
         else: st.session_state[key] = 0.0
 
 USER_SESSION_AVAILABLE = bool(USER_API_ID and USER_API_HASH and USER_SESSION_STRING)
 
 # ═══════════════════════════════════════════════════════════════
-# 🛠️ الدوال المساعدة وتحميل القواعد من المجلد (✅ الكود الجديد)
+# 🛠️ دوال تحميل ودمج قاعدة البيانات
 # ═══════════════════════════════════════════════════════════════
 
-def extract_folder_id(url_or_id):
-    """استخراج معرف المجلد من رابط Google Drive"""
-    if not url_or_id: return None
-    if len(url_or_id) < 50 and '/' not in url_or_id: return url_or_id
-    patterns = [r'/folders/([a-zA-Z0-9_-]+)', r'id=([a-zA-Z0-9_-]+)']
-    for pattern in patterns:
-        match = re.search(pattern, url_or_id)
-        if match: return match.group(1)
-    return url_or_id
-
-def download_folder_files(folder_id, output_dir):
-    """تحميل جميع ملفات .db من المجلد"""
-    try:
-        # إنشاء المجلد المؤقت
-        os.makedirs(output_dir, exist_ok=True)
+def download_specific_files(file_map, output_dir):
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
+    
+    downloaded_files = []
+    
+    for filename, file_id in file_map.items():
+        # التأكد من أن الاسم ينتهي بـ .db لإضافته إذا لزم الأمر
+        if not filename.endswith('.db'): filename += ".db"
         
-        # استخدام gdown لتحميل المجلد
-        folder_url = f'https://drive.google.com/drive/folders/{folder_id}'
+        output_path = os.path.join(output_dir, filename)
+        url = f'https://drive.google.com/uc?id={file_id}'
         
-        st.info(f"📂 جاري تحميل الملفات من المجلد...")
-        gdown.download_folder(folder_url, output=output_dir, quiet=False, use_cookies=False)
-        
-        # البحث عن ملفات .db فقط
-        db_files = []
-        for root, dirs, files in os.walk(output_dir):
-            for file in files:
-                if file.endswith('.db') or file.endswith('.sqlite') or file.endswith('.sqlite3'):
-                    db_files.append(os.path.join(root, file))
-        
-        return db_files
-    except Exception as e:
-        st.error(f"خطأ في تحميل المجلد: {e}")
-        return []
+        try:
+            # استخدام fuzzy=True ضروري لتخطي صفحة الفيروسات
+            gdown.download(url, output_path, quiet=True, fuzzy=True)
+            
+            # التحقق البسيط من الهيدر للتأكد أنه SQLite وليس HTML
+            if os.path.exists(output_path):
+                with open(output_path, 'rb') as f:
+                    header = f.read(16)
+                    if b'SQLite format 3' in header:
+                        downloaded_files.append(output_path)
+                    else:
+                        st.warning(f"⚠️ الملف {filename} تم تحميله كصفحة ويب (تأكد من الصلاحيات).")
+        except Exception as e:
+            st.warning(f"فشل تحميل {filename}: {e}")
+            
+    return downloaded_files
 
 def merge_databases(db_files, output_file):
-    """دمج عدة قواعد بيانات في ملف واحد"""
     try:
-        # إنشاء القاعدة المدمجة
         merged_conn = sqlite3.connect(output_file)
         merged_cursor = merged_conn.cursor()
         
-        # إنشاء جدول books إذا لم يكن موجوداً
         merged_cursor.execute("""
             CREATE TABLE IF NOT EXISTS books (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -166,21 +168,16 @@ def merge_databases(db_files, output_file):
         
         for db_file in db_files:
             try:
-                # الاتصال بالقاعدة الحالية
                 source_conn = sqlite3.connect(db_file)
                 source_cursor = source_conn.cursor()
                 
-                # التحقق من وجود جدول books
                 source_cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='books'")
                 if not source_cursor.fetchone():
                     source_conn.close()
                     continue
                 
-                # نسخ البيانات
                 source_cursor.execute("SELECT * FROM books")
                 columns = [description[0] for description in source_cursor.description]
-                
-                # تحضير استعلام الإدراج
                 placeholders = ','.join(['?' for _ in columns])
                 insert_sql = f"INSERT INTO books ({','.join(columns)}) VALUES ({placeholders})"
                 
@@ -190,19 +187,16 @@ def merge_databases(db_files, output_file):
                         merged_cursor.execute(insert_sql, row)
                         total_records += 1
                     except sqlite3.IntegrityError:
-                        continue  # تجاهل التكرارات
+                        continue 
                 
                 source_conn.close()
                 files_merged += 1
-                st.success(f"✅ تم دمج: {os.path.basename(db_file)} ({len(rows)} سجل)")
                 
-            except Exception as e:
-                st.warning(f"⚠️ تخطي ملف: {os.path.basename(db_file)} - {str(e)}")
+            except Exception:
                 continue
         
         merged_conn.commit()
         merged_conn.close()
-        
         return files_merged, total_records
         
     except Exception as e:
@@ -210,77 +204,47 @@ def merge_databases(db_files, output_file):
         return 0, 0
 
 def init_db():
-    """تحميل ودمج قواعد البيانات من المجلد"""
-    if not GDRIVE_FOLDER_ID: 
-        st.error("❌ لم يتم تحديد معرف المجلد في الأسرار")
-        return False
-    
-    # التحقق من وجود قاعدة محفوظة مسبقاً
-    if os.path.exists(DATABASE_FILE):
-        file_age = time.time() - os.path.getmtime(DATABASE_FILE)
-        file_size = os.path.getsize(DATABASE_FILE)
-        
-        if file_size > 102400 and file_age < DB_CACHE_TIME:  # 100KB و أقل من ساعة
+    # التحقق من وجود قاعدة مدمجة صالحة مسبقاً
+    if os.path.exists(DATABASE_FILE) and os.path.getsize(DATABASE_FILE) > 102400:
+        if time.time() - os.path.getmtime(DATABASE_FILE) < DB_CACHE_TIME:
             try:
                 conn = sqlite3.connect(DATABASE_FILE)
-                cursor = conn.cursor()
-                cursor.execute("SELECT COUNT(*) FROM books")
-                count = cursor.fetchone()[0]
+                conn.cursor().execute("SELECT count(*) FROM books")
                 conn.close()
-                
-                if count > 0:
-                    st.session_state.db_loaded = True
-                    st.session_state.db_size = file_size / (1024 * 1024)
-                    return True
+                st.session_state.db_loaded = True
+                st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
+                return True
             except:
-                try: os.remove(DATABASE_FILE)
-                except: pass
+                pass 
 
-    # تحميل ملفات جديدة من المجلد
-    try:
-        with st.spinner("📦 جاري تحميل ملفات قاعدة البيانات من Google Drive..."):
-            folder_id = extract_folder_id(GDRIVE_FOLDER_ID)
-            
-            # تنظيف المجلد المؤقت
-            if os.path.exists(DB_TEMP_DIR):
-                import shutil
-                shutil.rmtree(DB_TEMP_DIR)
-            
-            # تحميل الملفات
-            db_files = download_folder_files(folder_id, DB_TEMP_DIR)
-            
-            if not db_files:
-                st.error("❌ لم يتم العثور على ملفات قواعد بيانات في المجلد")
-                return False
-            
-            st.session_state.db_files_count = len(db_files)
-            st.info(f"📊 تم العثور على {len(db_files)} ملف قاعدة بيانات")
+    if not DB_PARTS:
+        st.error("⚠️ لم يتم العثور على أي معرفات ملفات في الأسرار.")
+        return False
+
+    with st.spinner("📦 جاري تحميل ودمج المكتبة من الأسرار..."):
+        db_files = download_specific_files(DB_PARTS, DB_TEMP_DIR)
         
-        # دمج القواعد
-        with st.spinner("🔄 جاري دمج قواعد البيانات..."):
-            files_merged, total_records = merge_databases(db_files, DATABASE_FILE)
+        if not db_files:
+            st.error("❌ لم يتم تحميل أي ملف قاعدة بيانات صالح.")
+            return False
+            
+        files_merged, total_records = merge_databases(db_files, DATABASE_FILE)
         
-        if files_merged > 0 and total_records > 0:
+        if files_merged > 0:
             st.session_state.db_loaded = True
             st.session_state.db_last_update = time.time()
             st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
-            st.success(f"✅ تم دمج {files_merged} ملف بنجاح! ({total_records} سجل)")
             
             # تنظيف الملفات المؤقتة
-            try:
-                import shutil
-                shutil.rmtree(DB_TEMP_DIR)
-            except:
-                pass
+            try: shutil.rmtree(DB_TEMP_DIR)
+            except: pass
             
+            st.success(f"✅ تم دمج {files_merged} أجزاء بنجاح! ({total_records} كتاب)")
+            time.sleep(1)
+            st.rerun()
             return True
-        else:
-            st.error("❌ فشل دمج القواعد")
-            return False
             
-    except Exception as e:
-        st.error(f"❌ خطأ في تحميل القواعد: {e}")
-        return False
+    return False
 
 def get_db_connection():
     if not st.session_state.db_loaded:
@@ -566,16 +530,13 @@ else:
             st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
             st.write(f"الجلسات: {len(st.session_state.active_sessions)}")
             st.write(f"حجم القاعدة: {st.session_state.db_size:.2f} MB")
-            st.write(f"عدد ملفات القاعدة المدمجة: {st.session_state.db_files_count}")  # ✅ جديد
             if st.button("تصفير الجلسات"):
                 st.session_state.active_sessions = {}
                 st.success("تم")
             if st.button("إعادة تحميل القاعدة"):
                 try: 
                     os.remove(DATABASE_FILE)
-                    if os.path.exists(DB_TEMP_DIR):
-                        import shutil
-                        shutil.rmtree(DB_TEMP_DIR)
+                    if os.path.exists(DB_TEMP_DIR): shutil.rmtree(DB_TEMP_DIR)
                 except: pass
                 st.session_state.db_loaded = False
                 st.rerun()
