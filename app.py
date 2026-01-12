@@ -287,19 +287,24 @@ def search_books_advanced(query, filters=None, limit=50):
         # 2. بناء الترتيب الذكي (Rank)
         target_name_col = 'normalized_name' if 'normalized_name' in existing_columns else 'file_name'
         
-        # منطق الترتيب: 0=تطابق تام، 1=كلمة كاملة، 2=يبدأ بـ، 3=غير ذلك
+        # منطق الترتيب الدقيق:
+        # 0: تطابق تام (الشاي)
+        # 1: كلمة كاملة (قف الشاي، الشاي الأخضر)
+        # 2: يبدأ بالأحرف (الشايع)
+        # 3: غير ذلك
+        
         rank_clause = f"""
         CASE 
             WHEN {target_name_col} = ? THEN 0 
-            WHEN {target_name_col} LIKE ? THEN 1 
-            WHEN {target_name_col} LIKE ? THEN 1
-            WHEN {target_name_col} LIKE ? THEN 1
-            WHEN {target_name_col} LIKE ? THEN 2
+            WHEN {target_name_col} LIKE ? THEN 1    -- يبدأ بكلمة كاملة
+            WHEN {target_name_col} LIKE ? THEN 1    -- ينتهي بكلمة كاملة
+            WHEN {target_name_col} LIKE ? THEN 1    -- كلمة كاملة في الوسط
+            WHEN {target_name_col} LIKE ? THEN 2    -- يبدأ بالأحرف (جزء من كلمة)
             ELSE 3 
         END
         """
         
-        # تجميع معاملات الترتيب (5 حالات)
+        # تجميع معاملات الترتيب
         rank_params = [
             clean_query,             # Exact
             f"{clean_query} %",      # Starts with + space
@@ -308,48 +313,34 @@ def search_books_advanced(query, filters=None, limit=50):
             f"{clean_query}%"        # Starts with chars
         ]
 
-        # دمج المعاملات: Rank params + Where params + Limit
+        # دمج المعاملات
         full_params = rank_params + params + [limit]
         
-        # جملة الاستعلام النهائية مع استخراج Rank لاستخدامه في Python
-        order_clause_sql = "match_rank ASC"
-        if 'normalized_name' in existing_columns:
-            order_clause_sql += ", length(normalized_name) ASC, message_id DESC"
-        elif 'file_name' in existing_columns:
-            order_clause_sql += ", length(file_name) ASC, message_id DESC"
-        else:
-             order_clause_sql += ", message_id DESC"
-
-        sql = f"SELECT *, ({rank_clause}) as match_rank FROM books WHERE {where} ORDER BY {order_clause_sql} LIMIT ?"
+        # استعلام SQL للحصول على النتائج مع الرتبة
+        sql = f"SELECT *, ({rank_clause}) as match_rank FROM books WHERE {where} ORDER BY match_rank ASC, length({target_name_col}) ASC LIMIT ?"
         
         cursor.execute(sql, full_params)
         results = [dict(r) for r in cursor.fetchall()]
         conn.close()
 
-        # 3. التحسين النهائي (Natural Sorting) إذا لم يكن في البحث رقم
-        query_has_digits = any(char.isdigit() for char in query)
-        
-        if not query_has_digits and results:
-            def natural_keys(row):
-                # تقسيم الاسم إلى نصوص وأرقام لترتيبها (vol 1, vol 2, vol 10)
+        # 3. التحسين النهائي (Natural Sorting) في بايثون
+        # هذا يدمج الرتبة اللغوية مع الترتيب الرقمي الصحيح (1 ثم 2 ثم 10)
+        if results:
+            def smart_sort_key(row):
                 text = row['file_name']
-                return (
-                    row['match_rank'], # الحفاظ على أهمية النتيجة (تطابق تام أولاً)
-                    [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
-                )
+                # تقسيم النص إلى أرقام ونصوص
+                parts = [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
+                
+                # الترتيب حسب الرتبة أولاً (الشاي قبل الشايع)، ثم الأرقام (1 قبل 2)
+                return (row['match_rank'], parts)
             
-            # إعادة ترتيب الـ 30 نتيجة المعروضة فقط
-            results.sort(key=natural_keys)
+            results.sort(key=smart_sort_key)
 
         return results, total_count
 
     except Exception as e:
         if st.session_state.get('is_admin', False): st.error(f"Error: {e}")
-        try:
-            cursor.execute(f"SELECT * FROM books WHERE file_name LIKE ? LIMIT ?", (f'%{query}%', limit))
-            res = [dict(r) for r in cursor.fetchall()]
-            return res, len(res) 
-        except: return [], 0
+        return [], 0
 
 # ═══════════════════════════════════════════════════════════════
 # 📥 منطق التحميل الموحد (تم التعديل: إخفاء التفاصيل عن المستخدم)
