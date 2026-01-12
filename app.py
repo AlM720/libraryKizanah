@@ -4,7 +4,6 @@ import requests
 import time
 import os
 import shutil
-# import gdown  <-- لم نعد بحاجة له للتحميل، سنستخدم requests الأقوى
 from datetime import datetime, timedelta
 import hashlib
 import re
@@ -67,7 +66,7 @@ try:
     USER_API_HASH = st.secrets.get("user_api_hash", "")
     USER_SESSION_STRING = st.secrets.get("user_session_string", "")
     
-    # جلب معرفات الأجزاء
+    # جلب روابط GitHub المباشرة من الأسرار
     if "db_parts" in st.secrets:
         DB_PARTS = dict(st.secrets["db_parts"])
     else:
@@ -107,71 +106,49 @@ for key in ['active_sessions', 'bot_requests', 'session_id', 'is_admin', 'show_c
 USER_SESSION_AVAILABLE = bool(USER_API_ID and USER_API_HASH and USER_SESSION_STRING)
 
 # ═══════════════════════════════════════════════════════════════
-# 🛠️ دوال التحميل المتقدمة (تجاوز تحذير الفيروسات)
+# 🛠️ دوال التحميل المباشر (GitHub / Direct Links)
 # ═══════════════════════════════════════════════════════════════
 
-def get_confirm_token(response):
-    for key, value in response.cookies.items():
-        if key.startswith('download_warning'):
-            return value
-    return None
-
-def download_file_robust(file_id, destination):
-    """
-    دالة قوية لتحميل الملفات الكبيرة من Drive عبر استخراج رمز التأكيد
-    """
-    URL = "https://docs.google.com/uc?export=download"
-    session = requests.Session()
-    
-    try:
-        response = session.get(URL, params={'id': file_id}, stream=True)
-        token = get_confirm_token(response)
-
-        if token:
-            params = {'id': file_id, 'confirm': token}
-            response = session.get(URL, params=params, stream=True)
-
-        with open(destination, "wb") as f:
-            for chunk in response.iter_content(32768):
-                if chunk: 
-                    f.write(chunk)
-        return True
-    except Exception as e:
-        st.error(f"فشل الاتصال أثناء تحميل الملف: {e}")
-        return False
-
 def download_specific_files(file_map, output_dir):
+    """
+    تحميل مباشر وسريع من روابط GitHub Raw
+    """
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     os.makedirs(output_dir, exist_ok=True)
     
     downloaded_files = []
-    
     progress_text = st.empty()
     
-    for i, (filename, file_id) in enumerate(file_map.items()):
+    for i, (filename, url) in enumerate(file_map.items()):
         if not filename.endswith('.db'): filename += ".db"
         output_path = os.path.join(output_dir, filename)
         
-        progress_text.info(f"⏳ جاري تحميل الجزء {i+1} من {len(file_map)}: {filename}...")
+        progress_text.info(f"⏳ جاري تحميل الجزء {i+1} من {len(file_map)}...")
         
-        # استخدام الدالة القوية الجديدة
-        success = download_file_robust(file_id, output_path)
-        
-        if success and os.path.exists(output_path):
-            # التحقق من أن الملف قاعدة بيانات سليمة وليس HTML
-            try:
-                with open(output_path, 'rb') as f:
-                    header = f.read(16)
-                    if b'SQLite format 3' in header:
-                        downloaded_files.append(output_path)
-                        st.toast(f"✅ تم تحميل {filename}")
-                    else:
-                        st.warning(f"⚠️ الملف {filename} تم تحميله لكنه يبدو تالفاً أو صفحة ويب.")
-            except:
-                st.warning(f"خطأ في قراءة الملف {filename}")
-        else:
-            st.warning(f"فشل تحميل الملف {filename}")
+        try:
+            # تحميل مباشر بدون تعقيدات gdown
+            response = requests.get(url, stream=True, timeout=60)
+            
+            if response.status_code == 200:
+                with open(output_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                
+                # التحقق من أن الملف SQLite صالح
+                if os.path.exists(output_path):
+                    with open(output_path, 'rb') as f:
+                        header = f.read(16)
+                        if b'SQLite format 3' in header:
+                            downloaded_files.append(output_path)
+                            st.toast(f"✅ تم تحميل {filename}")
+                        else:
+                            st.error(f"❌ الملف {filename} تم تحميله لكنه ليس قاعدة بيانات (تأكد أن الرابط هو Raw).")
+            else:
+                st.error(f"❌ فشل تحميل {filename} (HTTP {response.status_code})")
+                
+        except Exception as e:
+            st.error(f"❌ خطأ في الاتصال أثناء تحميل {filename}: {e}")
             
     progress_text.empty()
     return downloaded_files
@@ -238,6 +215,7 @@ def merge_databases(db_files, output_file):
         return 0, 0
 
 def init_db():
+    # التحقق من الكاش
     if os.path.exists(DATABASE_FILE) and os.path.getsize(DATABASE_FILE) > 102400:
         if time.time() - os.path.getmtime(DATABASE_FILE) < DB_CACHE_TIME:
             try:
@@ -251,14 +229,14 @@ def init_db():
                 pass 
 
     if not DB_PARTS:
-        st.error("⚠️ لا توجد ملفات للتحميل في الأسرار.")
+        st.error("⚠️ قائمة الملفات فارغة في الأسرار.")
         return False
 
-    with st.spinner("📦 جاري تحميل المكتبة (قد يستغرق وقتاً بسبب الحجم)..."):
+    with st.spinner("📦 جاري بناء المكتبة من المصدر..."):
         db_files = download_specific_files(DB_PARTS, DB_TEMP_DIR)
         
         if not db_files:
-            st.error("❌ فشل تحميل جميع الملفات.")
+            st.error("❌ فشل تحميل ملفات قاعدة البيانات.")
             return False
             
         files_merged, total_records = merge_databases(db_files, DATABASE_FILE)
@@ -267,10 +245,11 @@ def init_db():
             st.session_state.db_loaded = True
             st.session_state.db_last_update = time.time()
             st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
+            
             try: shutil.rmtree(DB_TEMP_DIR)
             except: pass
             
-            st.success(f"✅ تم بناء المكتبة: {files_merged} أجزاء، {total_records} كتاب.")
+            st.success(f"✅ تم تجهيز المكتبة: {total_records} كتاب متاح.")
             time.sleep(1)
             st.rerun()
             return True
@@ -360,7 +339,7 @@ def search_books_advanced(query, filters=None, limit=50):
         except: return []
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد
+# 📥 منطق التحميل الموحد (Telethon + Bot API)
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -489,10 +468,10 @@ def render_book_card_clean(row):
                     st.download_button("💾 حفظ", data, name, mime='application/octet-stream', key=f"dl_{row['id']}", use_container_width=True)
                     st.balloons()
 
-# التحميل الصامت (يحدث عند فتح التطبيق)
+# التحميل الصامت عند بدء التشغيل
 if not st.session_state.db_loaded: init_db()
 
-# تنظيف الجلسات
+# تنظيف الجلسات القديمة
 current_time = time.time()
 for sid in list(st.session_state.active_sessions.keys()):
     if current_time - st.session_state.active_sessions[sid]['start_time'] > SESSION_TIMEOUT:
