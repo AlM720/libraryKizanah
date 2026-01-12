@@ -82,12 +82,15 @@ USER_SESSION_MAX_SIZE_MB = 2000
 for key in ['active_sessions', 'bot_requests', 'session_id', 'is_admin', 'show_counter', 
             'db_loaded', 'db_last_update', 'db_size', 'downloading_now', 
             'last_download_time', 'last_large_download_time', 
-            'last_user_session_download', 'user_session_downloads_count', 'downloads_count']:
+            'last_user_session_download', 'user_session_downloads_count', 'downloads_count',
+            'search_limit', 'last_query']: # Added search state vars
     if key not in st.session_state:
         if key == 'bot_requests': st.session_state[key] = {i: [] for i in range(len(BOT_TOKENS))}
         elif key == 'active_sessions': st.session_state[key] = {}
         elif key in ['show_counter', 'is_admin', 'db_loaded', 'downloading_now']: st.session_state[key] = False
         elif key in ['db_last_update', 'db_size', 'user_session_downloads_count', 'downloads_count']: st.session_state[key] = 0
+        elif key == 'search_limit': st.session_state[key] = 30
+        elif key == 'last_query': st.session_state[key] = ""
         else: st.session_state[key] = 0.0
 
 USER_SESSION_AVAILABLE = bool(USER_API_ID and USER_API_HASH and USER_SESSION_STRING)
@@ -232,7 +235,7 @@ def get_db_connection():
     except: return None
 
 # ═══════════════════════════════════════════════════════════════
-# 🔍 البحث الذكي
+# 🔍 البحث الذكي (تم التعديل: ترتيب النتائج)
 # ═══════════════════════════════════════════════════════════════
 
 def normalize_arabic_text(text):
@@ -259,6 +262,7 @@ def search_books_advanced(query, filters=None, limit=50):
         if 'normalized_desc' in existing_columns: search_targets.append('normalized_desc')
         if 'description' in existing_columns and 'normalized_desc' not in existing_columns: search_targets.append('description')
         if not search_targets: return []
+        
         sql_parts, params = [], []
         for word in words:
             word_conditions = []
@@ -268,17 +272,31 @@ def search_books_advanced(query, filters=None, limit=50):
             if word_conditions:
                 sql_parts.append("(" + " OR ".join(word_conditions) + ")")
         where = " AND ".join(sql_parts)
+        
         if filters.get('format') and filters['format'] != 'all':
             if 'file_extension' in existing_columns:
                 where += " AND file_extension = ?"
                 params.append(filters['format'])
-        order_clause = "message_id DESC"
+        
+        # --- تعديل 3: تحسين ترتيب النتائج (اسم الكتاب أولاً ثم الوصف) ---
+        target_name_col = 'normalized_name' if 'normalized_name' in existing_columns else 'file_name'
+        
+        # الأولوية للنتائج التي يحتوي اسمها على كامل نص البحث
+        order_clause = f"(CASE WHEN {target_name_col} LIKE ? THEN 0 ELSE 1 END), "
+        
         if 'normalized_name' in existing_columns:
-            order_clause = "length(normalized_name) ASC, message_id DESC"
+            order_clause += "length(normalized_name) ASC, message_id DESC"
         elif 'file_name' in existing_columns:
-            order_clause = "length(file_name) ASC, message_id DESC"
+            order_clause += "length(file_name) ASC, message_id DESC"
+        else:
+             order_clause += "message_id DESC"
+
+        # إضافة معامل البحث لترتيب النتائج (لـ CASE)
+        params.append(f'%{clean_query}%')
+        
         sql = f"SELECT * FROM books WHERE {where} ORDER BY {order_clause} LIMIT ?"
         params.append(limit)
+        
         cursor.execute(sql, params)
         results = [dict(r) for r in cursor.fetchall()]
         conn.close()
@@ -291,7 +309,7 @@ def search_books_advanced(query, filters=None, limit=50):
         except: return []
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد (المُعدَّل الكامل)
+# 📥 منطق التحميل الموحد
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -319,70 +337,44 @@ def check_cooldowns(file_size_mb):
     return True, 0, "bot"
 
 def download_via_bot(file_id, file_name):
-    """
-    التحميل باستخدام Bot API (معدل ليدعم المعرفات الجديدة)
-    """
     try:
         if not file_id: return None
-        
         bot_token = get_best_bot()
-        
-        # 1. الحصول على معلومات الملف باستخدام file_id الجديد
-        # نستخدم timeout قصير للتحقق السريع
         file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile"
         response = requests.get(file_info_url, params={"file_id": file_id}, timeout=10)
-        
         if response.status_code != 200:
-            # طباعة الخطأ في الكونسول للمطور (Logs)
             print(f"⚠️ Bot getFile Error ({response.status_code}): {response.text}")
             return None
-        
         result = response.json()
         if not result.get("ok"):
             return None
-        
         file_path = result.get("result", {}).get("file_path")
         if not file_path: return None
-        
-        # 2. تحميل المحتوى الفعلي
         download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
         file_response = requests.get(download_url, stream=True, timeout=60)
-        
         if file_response.status_code == 200:
             file_data = io.BytesIO()
             total_size = 0
             for chunk in file_response.iter_content(chunk_size=8192):
                 file_data.write(chunk)
                 total_size += len(chunk)
-            
             if total_size > 0:
                 return file_data.getvalue()
-        
         return None
-    
     except Exception as e:
-        # طباعة الخطأ للمتابعة
         print(f"❌ Bot Exception: {e}")
         return None
 
 def download_via_telethon(message_id, file_name):
-    """
-    التحميل باستخدام Telethon User Session مع retry
-    """
     if not USER_SESSION_AVAILABLE:
         return None
-    
     try:
-        # ═══════════════════════════════════════════════════════
-        # ✅ إصلاح 1: إضافة Event Loop هنا
-        # ═══════════════════════════════════════════════════════
         import asyncio
         try:
             loop = asyncio.get_event_loop()
         except RuntimeError:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-        # ═══════════════════════════════════════════════════════
 
         from telethon.sync import TelegramClient
         from telethon.sessions import StringSession
@@ -393,39 +385,24 @@ def download_via_telethon(message_id, file_name):
                 USER_API_ID,
                 USER_API_HASH
             )
-            
             with client:
                 message = client.get_messages(CHANNEL_ID, ids=int(message_id))
-                
                 if not message or not message.media:
                     if st.session_state.get('is_admin'):
                         st.warning(f"⚠️ Telethon: رسالة {message_id} لا تحتوي ملف")
                     return None
-                
                 file_buffer = io.BytesIO()
                 client.download_media(message, file=file_buffer)
-                
                 file_data = file_buffer.getvalue()
-                if len(file_data) > 100:  # تأكد أن الملف ليس فارغاً
+                if len(file_data) > 100: 
                     return file_data
-        
         return None
-    
     except Exception as e:
         if st.session_state.get('is_admin'):
             st.error(f"❌ Telethon فشل: {str(e)[:100]}")
         return None
 
 def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=None):
-    """
-    التحميل الموحد مع توزيع ذكي لتجنب الحظر
-    
-    استراتيجية التوزيع:
-    - ملفات صغيرة (<2MB): Bot فقط (70% Bot، 30% Telethon للتنويع)
-    - ملفات متوسطة (2-10MB): Bot أولاً ثم Telethon
-    - ملفات كبيرة (10-20MB): Telethon مع محاولة Bot
-    - ملفات ضخمة (>20MB): Telethon فقط
-    """
     if st.session_state.downloading_now:
         st.warning("⏳ انتظر انتهاء التحميل الحالي...")
         return None
@@ -449,11 +426,6 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
         file_data = None
         download_method_used = None
         
-        # ═══════════════════════════════════════════════════════
-        # استراتيجية التوزيع الذكي
-        # ═══════════════════════════════════════════════════════
-        
-        # 1️⃣ ملفات ضخمة (>20MB) - Telethon فقط
         if file_size_mb > 20:
             if not USER_SESSION_AVAILABLE:
                 st.error("❌ جلسة المستخدم مطلوبة للملفات الكبيرة")
@@ -465,9 +437,7 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
                 st.session_state.last_user_session_download = time.time()
                 st.session_state.user_session_downloads_count += 1
         
-        # 2️⃣ ملفات كبيرة (10-20MB) - Telethon أولاً
         elif file_size_mb > 10:
-            # نحاول Telethon أولاً للملفات الكبيرة
             if USER_SESSION_AVAILABLE:
                 file_data = download_via_telethon(message_id, file_name)
                 download_method_used = "telethon"
@@ -475,33 +445,27 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
                     st.session_state.last_user_session_download = time.time()
                     st.session_state.user_session_downloads_count += 1
             
-            # إذا فشل Telethon أو غير متاح، نجرب Bot
             if not file_data and file_id:
                 file_data = download_via_bot(file_id, file_name)
                 download_method_used = "bot"
                 if file_data:
                     st.session_state.last_large_download_time = time.time()
         
-        # 3️⃣ ملفات متوسطة (2-10MB) - Bot أولاً ثم Telethon
         elif file_size_mb > 2:
-            # نحاول Bot أولاً
             if file_id:
                 file_data = download_via_bot(file_id, file_name)
                 download_method_used = "bot"
                 if file_data:
                     st.session_state.last_large_download_time = time.time()
             
-            # إذا فشل Bot، نجرب Telethon
             if not file_data and USER_SESSION_AVAILABLE:
                 file_data = download_via_telethon(message_id, file_name)
                 download_method_used = "telethon"
                 if file_data:
                     st.session_state.user_session_downloads_count += 1
         
-        # 4️⃣ ملفات صغيرة (<2MB) - توزيع 70% Bot / 30% Telethon
         else:
-            # توزيع عشوائي لتقليل الضغط
-            use_bot_first = (st.session_state.downloads_count % 10) < 7  # 70% Bot
+            use_bot_first = (st.session_state.downloads_count % 10) < 7 
             
             if use_bot_first and file_id:
                 file_data = download_via_bot(file_id, file_name)
@@ -509,7 +473,6 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
                 if file_data:
                     st.session_state.last_download_time = time.time()
                 
-                # إذا فشل Bot، نجرب Telethon
                 if not file_data and USER_SESSION_AVAILABLE:
                     file_data = download_via_telethon(message_id, file_name)
                     download_method_used = "telethon"
@@ -522,30 +485,23 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
                 if file_data:
                     st.session_state.user_session_downloads_count += 1
                 
-                # إذا فشل Telethon، نجرب Bot
                 if not file_data and file_id:
                     file_data = download_via_bot(file_id, file_name)
                     download_method_used = "bot"
                     if file_data:
                         st.session_state.last_download_time = time.time()
             
-            # آخر محاولة: Bot فقط
             elif file_id:
                 file_data = download_via_bot(file_id, file_name)
                 download_method_used = "bot"
                 if file_data:
                     st.session_state.last_download_time = time.time()
         
-        # ═══════════════════════════════════════════════════════
-        # المعالجة النهائية
-        # ═══════════════════════════════════════════════════════
-        
         if file_data:
             st.session_state.downloads_count += 1
             if not file_name.endswith(f'.{file_ext}'):
                 file_name = f"{file_name}.{file_ext}"
             
-            # عرض طريقة التحميل للمشرف
             if st.session_state.get('is_admin') and download_method_used:
                 st.success(f"✅ تم عبر: {download_method_used.upper()}")
             
@@ -564,12 +520,12 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
         st.session_state.downloading_now = False
 
 # ═══════════════════════════════════════════════════════════════
-# 🖥️ الواجهة والعرض
+# 🖥️ الواجهة والعرض (تم التعديل: إظهار الوصف كاملاً)
 # ═══════════════════════════════════════════════════════════════
 
 def render_book_card_clean(row):
     """
-    نسخة مضغوطة (Minified) لمنع أي تفسير خاطئ للأكواد
+    نسخة محسنة تعرض الوصف كاملاً
     """
     file_size_mb = row.get('size_mb', 0)
     file_ext = row.get('file_extension', 'pdf').replace('.', '')
@@ -584,8 +540,9 @@ def render_book_card_clean(row):
     if desc:
         desc = re.sub(r'http\S+', '', desc)
         desc = re.sub(r'@\w+', '', desc)
-        safe_desc = html.escape(desc[:250])
-        desc_html = f'<div class="book-desc">{safe_desc}...</div>'
+        # --- تعديل 2: إزالة الحذف الجزئي للوصف وإظهاره كاملاً ---
+        safe_desc = html.escape(desc) 
+        desc_html = f'<div class="book-desc">{safe_desc}</div>'
 
     card_html = f"""<div class="book-card"><div class="book-title">📖 {row.get('file_name', 'بدون عنوان')}</div><div class="book-meta"><span class="meta-item" style="color: #0e7490; background: #cffafe;">📂 {file_ext.upper()}</span><span class="meta-item">💾 {file_size_mb:.2f} MB</span>{pages_html}</div>{desc_html}</div>"""
     
@@ -657,12 +614,27 @@ else:
     with col_btn:
         do_search = st.button("بحث", use_container_width=True, type="primary")
 
+    # --- تعديل 1: منطق عرض المزيد (Pagination) ---
+    if query != st.session_state.last_query or do_search:
+        st.session_state.search_limit = 30
+        st.session_state.last_query = query
+        
     if query or do_search:
         with st.spinner("جاري البحث..."):
-            results = search_books_advanced(query, limit=30)
+            results = search_books_advanced(query, limit=st.session_state.search_limit)
+        
         if results:
             st.success(f"النتائج: {len(results)}")
             for row in results: render_book_card_clean(row)
+            
+            # زر "عرض المزيد"
+            if len(results) >= st.session_state.search_limit:
+                st.markdown("---")
+                col_more1, col_more2, col_more3 = st.columns([1, 2, 1])
+                with col_more2:
+                    if st.button("➕ عرض 30 نتيجة إضافية", use_container_width=True):
+                        st.session_state.search_limit += 30
+                        st.rerun()
         else:
             st.info("لم يتم العثور على نتائج.")
             if st.session_state.is_admin:
@@ -728,16 +700,12 @@ else:
                         st.error("❌ Telethon غير مفعّل في Secrets")
                     else:
                         try:
-                            # ═══════════════════════════════════════════════════════
-                            # ✅ إصلاح 2: إضافة Event Loop هنا أيضاً لنظام الاختبار
-                            # ═══════════════════════════════════════════════════════
                             import asyncio
                             try:
                                 loop = asyncio.get_event_loop()
                             except RuntimeError:
                                 loop = asyncio.new_event_loop()
                                 asyncio.set_event_loop(loop)
-                            # ═══════════════════════════════════════════════════════
 
                             from telethon.sync import TelegramClient
                             from telethon.sessions import StringSession
