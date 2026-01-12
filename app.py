@@ -70,7 +70,7 @@ except:
     st.stop()
 
 DATABASE_FILE = "/tmp/books.db"
-DB_CACHE_TIME = 3600 # ساعة واحدة
+DB_CACHE_TIME = 3600
 SESSION_TIMEOUT = 600
 MIN_REQUEST_INTERVAL = 3
 MAX_REQUESTS_PER_MINUTE = 15
@@ -97,7 +97,7 @@ for key in ['active_sessions', 'bot_requests', 'session_id', 'is_admin', 'show_c
 USER_SESSION_AVAILABLE = bool(USER_API_ID and USER_API_HASH and USER_SESSION_STRING)
 
 # ═══════════════════════════════════════════════════════════════
-# 🛠️ الدوال المساعدة والتحميل الذكي للقاعدة
+# 🛠️ الدوال المساعدة والتحميل الذكي (FIXED)
 # ═══════════════════════════════════════════════════════════════
 
 def extract_file_id(url_or_id):
@@ -110,59 +110,71 @@ def extract_file_id(url_or_id):
     return url_or_id
 
 def download_file_from_google_drive(id, destination):
-    """دالة قوية جداً لتجاوز صفحة تحذير الفيروسات من جوجل"""
+    """دالة محسنة جداً لتجاوز تأكيد الفيروسات وتحميل الملف كاملاً"""
     URL = "https://docs.google.com/uc?export=download"
     session = requests.Session()
-    response = session.get(URL, params={'id': id}, stream=True)
-    
-    def get_confirm_token(response):
-        for key, value in response.cookies.items():
-            if key.startswith('download_warning'):
-                return value
-        return None
 
-    token = get_confirm_token(response)
+    # 1. الطلب الأول للحصول على الكوكيز والتوكن
+    response = session.get(URL, params={'id': id}, stream=True)
+    token = None
+    for key, value in response.cookies.items():
+        if key.startswith('download_warning'):
+            token = value
+            break
+
+    # 2. إذا وجدنا توكن التحذير، نرسل طلب التأكيد
     if token:
         params = {'id': id, 'confirm': token}
         response = session.get(URL, params=params, stream=True)
-
+    
+    # 3. حفظ الملف
     CHUNK_SIZE = 32768
     with open(destination, "wb") as f:
         for chunk in response.iter_content(CHUNK_SIZE):
             if chunk: f.write(chunk)
 
 def init_db():
-    """تحميل وفحص سلامة قاعدة البيانات"""
     if not GDRIVE_FILE_ID: return False
     
-    # هل الملف موجود وحديث؟
+    # إذا الملف موجود، نفحص حجمه وصلاحيته
     if os.path.exists(DATABASE_FILE):
-        if time.time() - os.path.getmtime(DATABASE_FILE) < DB_CACHE_TIME:
-            # فحص سريع: هل هو ملف SQLite صالح؟
+        file_size = os.path.getsize(DATABASE_FILE)
+        # إذا الحجم صغير جداً (أقل من 100 كيلوبايت) فهو تالف
+        if file_size < 102400: 
+            try: os.remove(DATABASE_FILE)
+            except: pass
+        elif time.time() - os.path.getmtime(DATABASE_FILE) < DB_CACHE_TIME:
             try:
                 conn = sqlite3.connect(DATABASE_FILE)
-                conn.execute("SELECT count(*) FROM books LIMIT 1")
+                conn.execute("SELECT 1 FROM books LIMIT 1")
                 conn.close()
                 st.session_state.db_loaded = True
+                st.session_state.db_size = file_size / (1024 * 1024)
                 return True
             except:
-                # الملف تالف، نحذفه ونعيد التحميل
-                os.remove(DATABASE_FILE)
+                try: os.remove(DATABASE_FILE)
+                except: pass
     
-    # بدء التحميل
+    # تحميل جديد
     try:
         file_id = extract_file_id(GDRIVE_FILE_ID)
-        download_file_from_google_drive(file_id, DATABASE_FILE)
         
-        # التأكد من نجاح التحميل
-        if os.path.getsize(DATABASE_FILE) < 1000: # أصغر من 1 كيلوبايت = خطأ
-            st.error("❌ فشل تحميل قاعدة البيانات (الملف صغير جداً). تأكد من صلاحيات الرابط في جوجل درايف.")
-            return False
+        # عرض شريط تقدم للمشرف
+        with st.spinner("📥 جاري تحميل قاعدة البيانات (قد يستغرق وقتاً لكبر الحجم)..."):
+            download_file_from_google_drive(file_id, DATABASE_FILE)
+        
+        # التأكد من نجاح التحميل بعد الانتهاء
+        if os.path.exists(DATABASE_FILE):
+            final_size = os.path.getsize(DATABASE_FILE)
+            if final_size < 102400: # فشل التحميل (ملف صغير)
+                st.error("❌ فشل تحميل القاعدة. تأكد من صحة الرابط.")
+                return False
             
-        st.session_state.db_loaded = True
-        st.session_state.db_last_update = time.time()
-        st.session_state.db_size = os.path.getsize(DATABASE_FILE) / (1024 * 1024)
-        return True
+            st.session_state.db_loaded = True
+            st.session_state.db_last_update = time.time()
+            st.session_state.db_size = final_size / (1024 * 1024)
+            return True
+        return False
     except Exception as e:
         st.error(f"حدث خطأ أثناء تحميل القاعدة: {e}")
         return False
@@ -198,7 +210,6 @@ def search_books_advanced(query, filters=None, limit=50):
     
     try:
         cursor = conn.cursor()
-        # فحص الأعمدة الموجودة فعلياً
         cursor.execute("PRAGMA table_info(books)")
         columns_info = cursor.fetchall()
         existing_columns = [col[1] for col in columns_info]
@@ -243,7 +254,8 @@ def search_books_advanced(query, filters=None, limit=50):
         return results
 
     except Exception as e:
-        # Fallback
+        if st.session_state.get('is_admin', False):
+            st.error(f"Error: {e}")
         try:
             cursor.execute(f"SELECT * FROM books WHERE file_name LIKE ? LIMIT ?", (f'%{query}%', limit))
             return [dict(r) for r in cursor.fetchall()]
@@ -379,7 +391,7 @@ def render_book_card_clean(row):
                     st.download_button("💾 حفظ", data, name, mime='application/octet-stream', key=f"dl_{row['id']}", use_container_width=True)
                     st.balloons()
 
-# التحميل الصامت
+# التحميل الصامت (يحدث عند فتح التطبيق)
 if not st.session_state.db_loaded: init_db()
 
 # تنظيف الجلسات
@@ -445,15 +457,21 @@ else:
             if st.session_state.is_admin:
                 # تشخيص للمشرف فقط
                 db_size = st.session_state.db_size
-                st.warning(f"تشخيص المشرف: حجم القاعدة {db_size:.2f} MB. إذا كان الرقم صغيراً جداً، فالرابط خطأ.")
+                st.warning(f"تشخيص المشرف: حجم القاعدة المحملة {db_size:.2f} MB. (يجب أن يكون أكثر من 0.1)")
 
     if st.session_state.is_admin:
         with st.expander("🛠️ التحكم", expanded=False):
             st.markdown('<div class="admin-panel">', unsafe_allow_html=True)
             st.write(f"الجلسات: {len(st.session_state.active_sessions)}")
+            st.write(f"حجم القاعدة: {st.session_state.db_size:.2f} MB")
             if st.button("تصفير الجلسات"):
                 st.session_state.active_sessions = {}
                 st.success("تم")
+            if st.button("إعادة تحميل القاعدة"):
+                try: os.remove(DATABASE_FILE)
+                except: pass
+                st.session_state.db_loaded = False
+                st.rerun()
             if st.button("خروج المشرف"):
                 st.session_state.is_admin = False
                 st.rerun()
