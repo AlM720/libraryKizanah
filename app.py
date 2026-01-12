@@ -113,7 +113,6 @@ def extract_file_id(url_or_id):
 def init_db():
     if not GDRIVE_FILE_ID: return False
     
-    # التحقق من وجود الملف وصلاحيته
     if os.path.exists(DATABASE_FILE):
         if os.path.getsize(DATABASE_FILE) < 102400: # 100KB
             try: os.remove(DATABASE_FILE)
@@ -130,18 +129,16 @@ def init_db():
                 try: os.remove(DATABASE_FILE)
                 except: pass
 
-    # التحميل باستخدام gdown (الحل الجذري)
     try:
         file_id = extract_file_id(GDRIVE_FILE_ID)
         url = f'https://drive.google.com/uc?id={file_id}'
         
         with st.spinner("📦 جاري تحميل قاعدة البيانات الكبيرة..."):
-            # quiet=False لإظهار الأخطاء في الكونسول، fuzzy=True لتخمين الاسم
             output = gdown.download(url, DATABASE_FILE, quiet=False, fuzzy=True)
         
         if output and os.path.exists(DATABASE_FILE):
             final_size = os.path.getsize(DATABASE_FILE)
-            if final_size > 102400: # أكبر من 100KB
+            if final_size > 102400:
                 st.session_state.db_loaded = True
                 st.session_state.db_last_update = time.time()
                 st.session_state.db_size = final_size / (1024 * 1024)
@@ -330,13 +327,19 @@ def unified_downloader(file_id, file_name, file_size_mb, file_ext):
         st.session_state.downloading_now = False
 
 # ═══════════════════════════════════════════════════════════════
-# 🖥️ الواجهة والعرض
+# 🖥️ الواجهة والعرض (تم تعديل العرض هنا)
 # ═══════════════════════════════════════════════════════════════
 
 def render_book_card_clean(row):
     file_size_mb = row.get('size_mb', 0)
     file_ext = row.get('file_extension', 'pdf').replace('.', '')
-    pages = row.get('pages', '?')
+    pages = row.get('pages')
+    
+    # 🕵️‍♂️ التعديل المطلوب: إخفاء الأيقونة إذا كانت الصفحات غير معروفة
+    pages_html = ""
+    if pages and str(pages).isdigit() and int(pages) > 0:
+        pages_html = f'<span class="meta-item">📄 {pages} صفحة</span>'
+
     desc = row.get('description', '')
     desc = re.sub(r'http\S+', '', desc)
     desc = re.sub(r'@\w+', '', desc)
@@ -347,7 +350,7 @@ def render_book_card_clean(row):
         <div class="book-meta">
             <span class="meta-item" style="color: #0e7490; background: #cffafe;">📂 {file_ext.upper()}</span>
             <span class="meta-item">💾 {file_size_mb:.2f} MB</span>
-            <span class="meta-item">📄 {pages} صفحة</span>
+            {pages_html}
         </div>
         {f'<div class="book-desc">{desc[:250]}...</div>' if desc else ''}
     </div>
@@ -428,7 +431,6 @@ else:
         else:
             st.info("لم يتم العثور على نتائج.")
             if st.session_state.is_admin:
-                # تشخيص للمشرف فقط
                 db_size = st.session_state.db_size
                 st.warning(f"تشخيص المشرف: حجم القاعدة المحملة {db_size:.2f} MB.")
 
