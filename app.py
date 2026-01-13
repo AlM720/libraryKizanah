@@ -317,7 +317,7 @@ def search_books_advanced(query, filters=None, limit=50):
         return [], 0
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد (مع التشخيص)
+# 📥 منطق التحميل الموحد (معدل بدقة لتقسيم العمل)
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -333,22 +333,18 @@ def get_best_bot():
 def check_cooldowns(file_size_mb):
     current_time = time.time()
     
-    # 20 ميجا فأعلى -> جلسة حصراً
+    # 🔥 القاعدة الجديدة: أكبر من 20 ميجا = جلسة فقط
     if file_size_mb > 20: 
         if not USER_SESSION_AVAILABLE: return False, 0, "unavailable"
         elapsed = current_time - st.session_state.last_user_session_download
         if elapsed < USER_SESSION_MIN_INTERVAL: return False, USER_SESSION_MIN_INTERVAL - elapsed, "user_session"
         return True, 0, "user_session"
     
-    # أقل من 20 ميجا -> بوتات
-    is_large = file_size_mb >= LARGE_FILE_THRESHOLD_MB
-    last_time = st.session_state.last_large_download_time if is_large else st.session_state.last_download_time
-    req_interval = LARGE_FILE_MIN_INTERVAL if is_large else MIN_REQUEST_INTERVAL
-    
-    elapsed = current_time - last_time
-    if elapsed < req_interval: return False, req_interval - elapsed, "bot"
-    
-    return True, 0, "bot"
+    # 🔥 القاعدة الجديدة: 20 ميجا أو أقل = بوتات فقط
+    else:
+        elapsed = current_time - st.session_state.last_download_time
+        if elapsed < MIN_REQUEST_INTERVAL: return False, MIN_REQUEST_INTERVAL - elapsed, "bot"
+        return True, 0, "bot"
 
 def download_via_bot(file_id, file_name):
     # تُرجع هذه الدالة (الملف، رسالة الخطأ)
@@ -405,7 +401,7 @@ def download_via_telethon(message_id, file_name):
         from telethon.sync import TelegramClient
         from telethon.sessions import StringSession
         
-        msg = f"☁️ جاري الاتصال بالمصدر..."
+        msg = f"☁️ جاري الاتصال بالمصدر (ملف كبير)..."
         if st.session_state.get('is_admin'): msg = f"☁️ Telethon يحمّل: {file_name[:30]}..."
 
         with st.spinner(msg):
@@ -438,7 +434,7 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
     
     if not can_download:
         if method == "unavailable":
-            st.error("❌ الملف كبير جداً - تواصل مع الإدارة")
+            st.error("❌ الملف كبير جداً ولا توجد جلسة مفعلة.")
             return None
         
         msg_holder = st.empty()
@@ -452,49 +448,32 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
     try:
         file_data = None
         download_method_used = None
-        bot_error_log = None # لتخزين خطأ البوت وعرضه للمشرف
         
-        # > 20 MB -> Telethon حصرياً
+        # ⚡⚡⚡ التقسيم الصارم حسب الحجم ⚡⚡⚡
+        
         if file_size_mb > 20:
-            if not USER_SESSION_AVAILABLE:
-                st.error("❌ جلسة غير متاحة للملفات الكبيرة")
-                return None
-            
-            file_data = download_via_telethon(message_id, file_name)
-            download_method_used = "telethon"
-            if file_data:
-                st.session_state.last_user_session_download = time.time()
-                st.session_state.user_session_downloads_count += 1
-        
-        # <= 20 MB -> الأولوية للبوتات
-        else:
-            # محاولة البوت أولاً
-            if file_id:
-                # لاحظ التغيير هنا: نستقبل البيانات والخطأ
-                file_data, bot_error_log = download_via_bot(file_id, file_name)
-                
-                if file_data:
-                    download_method_used = "bot"
-                    if file_size_mb >= LARGE_FILE_THRESHOLD_MB:
-                        st.session_state.last_large_download_time = time.time()
-                    else:
-                        st.session_state.last_download_time = time.time()
-                elif st.session_state.get('is_admin') and bot_error_log:
-                    # عرض تشخيص الخطأ للمشرف فقط
-                    st.error(f"⚠️ تشخيص المشرف - فشل البوت: {bot_error_log}")
-            
-            # إذا فشل البوت، نستخدم Telethon كاحتياطي
-            if not file_data and USER_SESSION_AVAILABLE:
-                if bot_error_log and st.session_state.get('is_admin'):
-                     st.info("🔄 جاري المحاولة عبر الجلسة (Telethon)...")
-                
-                time.sleep(1)
+            # أكبر من 20 ميجا = Telethon (Session) فقط
+            if USER_SESSION_AVAILABLE:
                 file_data = download_via_telethon(message_id, file_name)
-                download_method_used = "telethon (fallback)"
+                download_method_used = "telethon (large file)"
                 if file_data:
-                    st.session_state.user_session_downloads_count += 1
                     st.session_state.last_user_session_download = time.time()
+                    st.session_state.user_session_downloads_count += 1
+            else:
+                st.error("❌ لا يمكن تحميل ملفات أكبر من 20MB بدون جلسة.")
+                return None
         
+        else:
+            # 20 ميجا أو أقل = Bots فقط (توزيع الحمل)
+            file_data, bot_error_log = download_via_bot(file_id, file_name)
+            download_method_used = "bot (distributed)"
+            
+            if file_data:
+                st.session_state.last_download_time = time.time()
+            elif st.session_state.get('is_admin') and bot_error_log:
+                st.error(f"⚠️ خطأ البوت: {bot_error_log}")
+
+        # التحقق النهائي
         if file_data:
             st.session_state.downloads_count += 1
             if not file_name.endswith(f'.{file_ext}'):
@@ -506,7 +485,7 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
             return file_data, file_name
         else:
             if st.session_state.get('is_admin'):
-                st.error("❌ فشل التحميل نهائياً")
+                st.error("❌ فشل التحميل.")
             else:
                 st.error("❌ تعذر تحميل الملف حالياً.")
             return None
