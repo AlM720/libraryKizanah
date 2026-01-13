@@ -317,7 +317,7 @@ def search_books_advanced(query, filters=None, limit=50):
         return [], 0
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد (معدل بدقة لتقسيم العمل)
+# 📥 منطق التحميل الموحد (تقسيم صارم + بدون تعديل قاعدة)
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -333,14 +333,14 @@ def get_best_bot():
 def check_cooldowns(file_size_mb):
     current_time = time.time()
     
-    # 🔥 القاعدة الجديدة: أكبر من 20 ميجا = جلسة فقط
+    # 🔥 القاعدة: أكبر من 20 ميجا = جلسة فقط
     if file_size_mb > 20: 
         if not USER_SESSION_AVAILABLE: return False, 0, "unavailable"
         elapsed = current_time - st.session_state.last_user_session_download
         if elapsed < USER_SESSION_MIN_INTERVAL: return False, USER_SESSION_MIN_INTERVAL - elapsed, "user_session"
         return True, 0, "user_session"
     
-    # 🔥 القاعدة الجديدة: 20 ميجا أو أقل = بوتات فقط
+    # 20 ميجا أو أقل = بوتات
     else:
         elapsed = current_time - st.session_state.last_download_time
         if elapsed < MIN_REQUEST_INTERVAL: return False, MIN_REQUEST_INTERVAL - elapsed, "bot"
@@ -401,7 +401,7 @@ def download_via_telethon(message_id, file_name):
         from telethon.sync import TelegramClient
         from telethon.sessions import StringSession
         
-        msg = f"☁️ جاري الاتصال بالمصدر (ملف كبير)..."
+        msg = f"☁️ جاري الاتصال بالمصدر..."
         if st.session_state.get('is_admin'): msg = f"☁️ Telethon يحمّل: {file_name[:30]}..."
 
         with st.spinner(msg):
@@ -430,18 +430,21 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
         st.warning("⏳ انتظر انتهاء التحميل الحالي...")
         return None
     
+    # تصحيح الحجم لضمان أنه رقم
+    try: file_size_mb = float(file_size_mb)
+    except: file_size_mb = 0.0
+
+    # التحقق من الكود (Cooldown)
     can_download, wait_time, method = check_cooldowns(file_size_mb)
-    
     if not can_download:
         if method == "unavailable":
-            st.error("❌ الملف كبير جداً ولا توجد جلسة مفعلة.")
+            st.error("❌ الملف كبير ولا توجد جلسة.")
             return None
-        
-        msg_holder = st.empty()
+        msg = st.empty()
         for i in range(int(wait_time), 0, -1):
-            msg_holder.info(f"🔄 جاري تجهيز الرابط ({i})...")
+            msg.info(f"⏳ انتظار {i} ثانية...")
             time.sleep(1)
-        msg_holder.empty()
+        msg.empty()
     
     st.session_state.downloading_now = True
     
@@ -449,54 +452,45 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
         file_data = None
         download_method_used = None
         
-        # ⚡⚡⚡ التقسيم الصارم حسب الحجم ⚡⚡⚡
-        
+        # 1. إذا الملف كبير جداً (>20) -> لا مفر من الجلسة
         if file_size_mb > 20:
-            # أكبر من 20 ميجا = Telethon (Session) فقط
             if USER_SESSION_AVAILABLE:
                 file_data = download_via_telethon(message_id, file_name)
-                download_method_used = "telethon (large file)"
                 if file_data:
-                    st.session_state.last_user_session_download = time.time()
+                    download_method_used = "telethon (large)"
                     st.session_state.user_session_downloads_count += 1
+                    st.session_state.last_user_session_download = time.time()
             else:
-                st.error("❌ لا يمكن تحميل ملفات أكبر من 20MB بدون جلسة.")
+                st.error("❌ الملف أكبر من 20 ميجا ولا يمكن للبوت تحميله.")
                 return None
-        
-        else:
-            # 20 ميجا أو أقل = Bots فقط (توزيع الحمل)
-            file_data, bot_error_log = download_via_bot(file_id, file_name)
-            download_method_used = "bot (distributed)"
-            
-            if file_data:
-                st.session_state.last_download_time = time.time()
-            elif st.session_state.get('is_admin') and bot_error_log:
-                st.error(f"⚠️ خطأ البوت: {bot_error_log}")
 
-        # التحقق النهائي
+        # 2. الملف صغير (<=20) -> نحاول بالبوت
+        else:
+            file_data, error = download_via_bot(file_id, file_name)
+            if file_data:
+                download_method_used = "bot"
+            elif st.session_state.get('is_admin'):
+                st.error(f"❌ خطأ البوت: {error}")
+
+        # النتيجة النهائية
         if file_data:
             st.session_state.downloads_count += 1
+            st.session_state.last_download_time = time.time()
             if not file_name.endswith(f'.{file_ext}'):
                 file_name = f"{file_name}.{file_ext}"
             
             if st.session_state.get('is_admin') and download_method_used:
-                st.success(f"✅ تم عبر: {download_method_used.upper()}")
-            
+                st.success(f"✅ تم عبر: {download_method_used}")
+                
             return file_data, file_name
         else:
-            if st.session_state.get('is_admin'):
-                st.error("❌ فشل التحميل.")
-            else:
+            if not st.session_state.get('is_admin'):
                 st.error("❌ تعذر تحميل الملف حالياً.")
             return None
-    
+
     except Exception as e:
-        if st.session_state.get('is_admin'):
-            st.error(f"❌ System Error: {str(e)[:150]}")
-        else:
-            st.error("❌ حدث خطأ في النظام.")
+        st.error(f"حدث خطأ: {e}")
         return None
-    
     finally:
         st.session_state.downloading_now = False
 
@@ -505,7 +499,12 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
 # ═══════════════════════════════════════════════════════════════
 
 def render_book_card_clean(row):
-    file_size_mb = row.get('size_mb', 0)
+    # 🔥 تصحيح إجباري: التأكد من أن الحجم رقم عشري وليس نصاً
+    try:
+        file_size_mb = float(row.get('size_mb') or 0)
+    except:
+        file_size_mb = 0.0
+        
     file_ext = row.get('file_extension', 'pdf').replace('.', '')
     pages = row.get('pages')
     
@@ -708,6 +707,34 @@ else:
                         
                         except Exception as e:
                             st.error(f"❌ فشل: {str(e)[:100]}")
+
+            # --------------------------------------------------------
+            # ✅✅✅ هنا تمت إضافة كاشف المعرفات (Inspector) ✅✅✅
+            # --------------------------------------------------------
+            st.write("---")
+            st.write("### 🕵️‍♂️ كاشف المعرفات (فحص القاعدة)")
+            
+            check_mid = st.text_input("أدخل رقم رسالة (Message ID) لفحصها:", "")
+            if st.button("فحص المعرف") and check_mid:
+                conn = get_db_connection()
+                if conn:
+                    res = conn.cursor().execute("SELECT file_name, file_id, size_mb FROM books WHERE message_id=?", (check_mid,)).fetchone()
+                    conn.close()
+                    
+                    if res:
+                        fname, fid, size = res
+                        st.info(f"📘 الكتاب: {fname}")
+                        st.write(f"🔢 الحجم: {size} MB")
+                        st.code(f"🔑 المعرف (File ID):\n{fid}")
+                        
+                        # تحليل النتيجة
+                        if str(fid).startswith("BQ") or len(str(fid)) > 50:
+                            st.success("✅ هذا المعرف محدث (صيغة بوت)!")
+                        else:
+                            st.error("❌ هذا المعرف قديم (أرقام فقط) - القاعدة لم تتحدث!")
+                    else:
+                        st.warning("لم يتم العثور على كتاب بهذا الرقم.")
+            # --------------------------------------------------------
             
             st.write("---")
             
