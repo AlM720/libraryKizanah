@@ -317,7 +317,7 @@ def search_books_advanced(query, filters=None, limit=50):
         return [], 0
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد (معدل)
+# 📥 منطق التحميل الموحد (مع التشخيص)
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -340,7 +340,7 @@ def check_cooldowns(file_size_mb):
         if elapsed < USER_SESSION_MIN_INTERVAL: return False, USER_SESSION_MIN_INTERVAL - elapsed, "user_session"
         return True, 0, "user_session"
     
-    # أقل من 20 ميجا -> بوتات (مع تصنيف كبير/صغير لحد البوت)
+    # أقل من 20 ميجا -> بوتات
     is_large = file_size_mb >= LARGE_FILE_THRESHOLD_MB
     last_time = st.session_state.last_large_download_time if is_large else st.session_state.last_download_time
     req_interval = LARGE_FILE_MIN_INTERVAL if is_large else MIN_REQUEST_INTERVAL
@@ -351,21 +351,32 @@ def check_cooldowns(file_size_mb):
     return True, 0, "bot"
 
 def download_via_bot(file_id, file_name):
+    # تُرجع هذه الدالة (الملف، رسالة الخطأ)
     try:
-        if not file_id: return None
+        if not file_id: return None, "No file_id provided"
         bot_token = get_best_bot()
         file_info_url = f"https://api.telegram.org/bot{bot_token}/getFile"
+        
+        # 1. طلب معلومات الملف
         response = requests.get(file_info_url, params={"file_id": file_id}, timeout=10)
+        
         if response.status_code != 200:
-            if st.session_state.get('is_admin'): print(f"⚠️ Bot getFile Error ({response.status_code})")
-            return None
+            return None, f"GetFile HTTP Error: {response.status_code}"
+            
         result = response.json()
         if not result.get("ok"):
-            return None
+            # هنا يكمن سبب الفشل الحقيقي (مثلاً file_id invalid)
+            error_desc = result.get("description", "Unknown API Error")
+            return None, f"API Error: {error_desc}"
+            
         file_path = result.get("result", {}).get("file_path")
-        if not file_path: return None
+        if not file_path: 
+            return None, "No file_path received"
+            
+        # 2. تحميل الملف
         download_url = f"https://api.telegram.org/file/bot{bot_token}/{file_path}"
         file_response = requests.get(download_url, stream=True, timeout=60)
+        
         if file_response.status_code == 200:
             file_data = io.BytesIO()
             total_size = 0
@@ -373,11 +384,12 @@ def download_via_bot(file_id, file_name):
                 file_data.write(chunk)
                 total_size += len(chunk)
             if total_size > 0:
-                return file_data.getvalue()
-        return None
+                return file_data.getvalue(), None # نجاح، لا توجد أخطاء
+        
+        return None, f"Download HTTP Error: {file_response.status_code}"
+
     except Exception as e:
-        if st.session_state.get('is_admin'): print(f"❌ Bot Exception: {e}")
-        return None
+        return None, f"Exception: {str(e)}"
 
 def download_via_telethon(message_id, file_name):
     if not USER_SESSION_AVAILABLE:
@@ -405,8 +417,6 @@ def download_via_telethon(message_id, file_name):
             with client:
                 message = client.get_messages(CHANNEL_ID, ids=int(message_id))
                 if not message or not message.media:
-                    if st.session_state.get('is_admin'):
-                        st.warning(f"⚠️ Telethon: رسالة {message_id} لا تحتوي ملف")
                     return None
                 file_buffer = io.BytesIO()
                 client.download_media(message, file=file_buffer)
@@ -416,7 +426,7 @@ def download_via_telethon(message_id, file_name):
         return None
     except Exception as e:
         if st.session_state.get('is_admin'):
-            st.error(f"❌ Telethon فشل: {str(e)[:100]}")
+            st.error(f"❌ Telethon Error: {str(e)[:100]}")
         return None
 
 def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=None):
@@ -442,6 +452,7 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
     try:
         file_data = None
         download_method_used = None
+        bot_error_log = None # لتخزين خطأ البوت وعرضه للمشرف
         
         # > 20 MB -> Telethon حصرياً
         if file_size_mb > 20:
@@ -459,18 +470,25 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
         else:
             # محاولة البوت أولاً
             if file_id:
-                file_data = download_via_bot(file_id, file_name)
-                download_method_used = "bot"
+                # لاحظ التغيير هنا: نستقبل البيانات والخطأ
+                file_data, bot_error_log = download_via_bot(file_id, file_name)
+                
                 if file_data:
-                    # تحديث التوقيتات حسب حجم الملف (لأغراض تنظيم الدور)
+                    download_method_used = "bot"
                     if file_size_mb >= LARGE_FILE_THRESHOLD_MB:
                         st.session_state.last_large_download_time = time.time()
                     else:
                         st.session_state.last_download_time = time.time()
+                elif st.session_state.get('is_admin') and bot_error_log:
+                    # عرض تشخيص الخطأ للمشرف فقط
+                    st.error(f"⚠️ تشخيص المشرف - فشل البوت: {bot_error_log}")
             
             # إذا فشل البوت، نستخدم Telethon كاحتياطي
             if not file_data and USER_SESSION_AVAILABLE:
-                time.sleep(1) # تأخير بسيط لتجنب التداخل
+                if bot_error_log and st.session_state.get('is_admin'):
+                     st.info("🔄 جاري المحاولة عبر الجلسة (Telethon)...")
+                
+                time.sleep(1)
                 file_data = download_via_telethon(message_id, file_name)
                 download_method_used = "telethon (fallback)"
                 if file_data:
@@ -488,15 +506,14 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
             return file_data, file_name
         else:
             if st.session_state.get('is_admin'):
-                st.error("❌ فشل التحميل من جميع المصادر")
-                st.info(f"🔍 Debug: file_id={file_id}, message_id={message_id}, size={file_size_mb}MB")
+                st.error("❌ فشل التحميل نهائياً")
             else:
-                st.error("❌ تعذر تحميل الملف حالياً، حاول لاحقاً.")
+                st.error("❌ تعذر تحميل الملف حالياً.")
             return None
     
     except Exception as e:
         if st.session_state.get('is_admin'):
-            st.error(f"❌ خطأ غير متوقع: {str(e)[:150]}")
+            st.error(f"❌ System Error: {str(e)[:150]}")
         else:
             st.error("❌ حدث خطأ في النظام.")
         return None
