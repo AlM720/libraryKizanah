@@ -235,7 +235,7 @@ def get_db_connection():
     except: return None
 
 # ═══════════════════════════════════════════════════════════════
-# 🔍 البحث الذكي (تم حذف منطق ترتيب الأرقام)
+# 🔍 البحث الذكي
 # ═══════════════════════════════════════════════════════════════
 
 def normalize_arabic_text(text):
@@ -284,14 +284,9 @@ def search_books_advanced(query, filters=None, limit=50):
         cursor.execute(count_sql, count_params)
         total_count = cursor.fetchone()[0]
 
-        # 2. بناء الترتيب الذكي (Rank) عبر SQL فقط
+        # 2. بناء الترتيب الذكي (Rank)
         target_name_col = 'normalized_name' if 'normalized_name' in existing_columns else 'file_name'
         
-        # الترتيب:
-        # 0. تطابق تام
-        # 1. كلمة كاملة (بما في ذلك فصل الشرطات السفلية)
-        # 2. تبدأ بالكلمة
-        # 3. تحتوي على الكلمة
         rank_clause = f"""
         CASE 
             WHEN {target_name_col} = ? THEN 0
@@ -309,14 +304,11 @@ def search_books_advanced(query, filters=None, limit=50):
 
         full_params = rank_params + params + [limit]
         
-        # الترتيب: حسب الرتبة (match_rank) أولاً، ثم حسب قصر الاسم (الأقصر أفضل)
         sql = f"SELECT *, ({rank_clause}) as match_rank FROM books WHERE {where} ORDER BY match_rank ASC, length({target_name_col}) ASC LIMIT ?"
         
         cursor.execute(sql, full_params)
         results = [dict(r) for r in cursor.fetchall()]
         conn.close()
-
-        # تم حذف كود الترتيب البرمجي (Python Sort) الذي يعتمد على الأرقام
         
         return results, total_count
 
@@ -325,7 +317,7 @@ def search_books_advanced(query, filters=None, limit=50):
         return [], 0
 
 # ═══════════════════════════════════════════════════════════════
-# 📥 منطق التحميل الموحد
+# 📥 منطق التحميل الموحد (معدل)
 # ═══════════════════════════════════════════════════════════════
 
 def get_best_bot():
@@ -340,16 +332,22 @@ def get_best_bot():
 
 def check_cooldowns(file_size_mb):
     current_time = time.time()
-    if file_size_mb >= 20: 
+    
+    # 20 ميجا فأعلى -> جلسة حصراً
+    if file_size_mb > 20: 
         if not USER_SESSION_AVAILABLE: return False, 0, "unavailable"
         elapsed = current_time - st.session_state.last_user_session_download
         if elapsed < USER_SESSION_MIN_INTERVAL: return False, USER_SESSION_MIN_INTERVAL - elapsed, "user_session"
         return True, 0, "user_session"
+    
+    # أقل من 20 ميجا -> بوتات (مع تصنيف كبير/صغير لحد البوت)
     is_large = file_size_mb >= LARGE_FILE_THRESHOLD_MB
     last_time = st.session_state.last_large_download_time if is_large else st.session_state.last_download_time
     req_interval = LARGE_FILE_MIN_INTERVAL if is_large else MIN_REQUEST_INTERVAL
+    
     elapsed = current_time - last_time
     if elapsed < req_interval: return False, req_interval - elapsed, "bot"
+    
     return True, 0, "bot"
 
 def download_via_bot(file_id, file_name):
@@ -395,7 +393,6 @@ def download_via_telethon(message_id, file_name):
         from telethon.sync import TelegramClient
         from telethon.sessions import StringSession
         
-        # رسالة عامة للمستخدم
         msg = f"☁️ جاري الاتصال بالمصدر..."
         if st.session_state.get('is_admin'): msg = f"☁️ Telethon يحمّل: {file_name[:30]}..."
 
@@ -446,6 +443,7 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
         file_data = None
         download_method_used = None
         
+        # > 20 MB -> Telethon حصرياً
         if file_size_mb > 20:
             if not USER_SESSION_AVAILABLE:
                 st.error("❌ جلسة غير متاحة للملفات الكبيرة")
@@ -457,65 +455,27 @@ def unified_downloader(message_id, file_name, file_size_mb, file_ext, file_id=No
                 st.session_state.last_user_session_download = time.time()
                 st.session_state.user_session_downloads_count += 1
         
-        elif file_size_mb > 10:
-            if USER_SESSION_AVAILABLE:
-                file_data = download_via_telethon(message_id, file_name)
-                download_method_used = "telethon"
-                if file_data:
-                    st.session_state.last_user_session_download = time.time()
-                    st.session_state.user_session_downloads_count += 1
-            
-            if not file_data and file_id:
-                file_data = download_via_bot(file_id, file_name)
-                download_method_used = "bot"
-                if file_data:
-                    st.session_state.last_large_download_time = time.time()
-        
-        elif file_size_mb > 2:
+        # <= 20 MB -> الأولوية للبوتات
+        else:
+            # محاولة البوت أولاً
             if file_id:
                 file_data = download_via_bot(file_id, file_name)
                 download_method_used = "bot"
                 if file_data:
-                    st.session_state.last_large_download_time = time.time()
-            
-            if not file_data and USER_SESSION_AVAILABLE:
-                file_data = download_via_telethon(message_id, file_name)
-                download_method_used = "telethon"
-                if file_data:
-                    st.session_state.user_session_downloads_count += 1
-        
-        else:
-            use_bot_first = (st.session_state.downloads_count % 10) < 7 
-            
-            if use_bot_first and file_id:
-                file_data = download_via_bot(file_id, file_name)
-                download_method_used = "bot"
-                if file_data:
-                    st.session_state.last_download_time = time.time()
-                
-                if not file_data and USER_SESSION_AVAILABLE:
-                    file_data = download_via_telethon(message_id, file_name)
-                    download_method_used = "telethon"
-                    if file_data:
-                        st.session_state.user_session_downloads_count += 1
-            
-            elif USER_SESSION_AVAILABLE:
-                file_data = download_via_telethon(message_id, file_name)
-                download_method_used = "telethon"
-                if file_data:
-                    st.session_state.user_session_downloads_count += 1
-                
-                if not file_data and file_id:
-                    file_data = download_via_bot(file_id, file_name)
-                    download_method_used = "bot"
-                    if file_data:
+                    # تحديث التوقيتات حسب حجم الملف (لأغراض تنظيم الدور)
+                    if file_size_mb >= LARGE_FILE_THRESHOLD_MB:
+                        st.session_state.last_large_download_time = time.time()
+                    else:
                         st.session_state.last_download_time = time.time()
             
-            elif file_id:
-                file_data = download_via_bot(file_id, file_name)
-                download_method_used = "bot"
+            # إذا فشل البوت، نستخدم Telethon كاحتياطي
+            if not file_data and USER_SESSION_AVAILABLE:
+                time.sleep(1) # تأخير بسيط لتجنب التداخل
+                file_data = download_via_telethon(message_id, file_name)
+                download_method_used = "telethon (fallback)"
                 if file_data:
-                    st.session_state.last_download_time = time.time()
+                    st.session_state.user_session_downloads_count += 1
+                    st.session_state.last_user_session_download = time.time()
         
         if file_data:
             st.session_state.downloads_count += 1
@@ -553,7 +513,6 @@ def render_book_card_clean(row):
     file_ext = row.get('file_extension', 'pdf').replace('.', '')
     pages = row.get('pages')
     
-    # إزالة الامتداد من اسم الكتاب في العرض
     display_name = row.get('file_name', 'بدون عنوان')
     if file_ext and display_name.lower().endswith(f".{file_ext}".lower()):
         display_name = display_name[:-len(file_ext)-1]
